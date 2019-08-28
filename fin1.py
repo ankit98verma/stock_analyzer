@@ -30,7 +30,9 @@ ana = StockAnalyzer([icici_bank, reliance, infosys_stock, bajaj], start_date, en
 # k, style = reliance.get_parabolic_sar_indicator()
 # Stock.plot_sar(k, style)
 
-icici_bank.get_adx_indicator()
-k, style = icici_bank.get_stochastic_indicator()
-Stock.plot_stochastic(k)
+k, style = icici_bank.get_adx_indicator()
+Stock.plot_adx(k)
+# k, style = icici_bank.get_stochastic_indicator()
+# Stock.plot_stochastic(k)
+
 plt.show()

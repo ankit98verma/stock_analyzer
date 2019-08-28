@@ -123,7 +123,7 @@ class Stock:
     @staticmethod
     def plot_moving_average(mov_data, style, win1, win2):
         ax = mov_data.plot(style=style, secondary_y='positions')
-        ax.fill_between(mov_data.index, mov_data['mean_'+str(win1)], mov_data['mean_'+str(win2)],
+        ax.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
                         where=mov_data['positions'] >= 1, facecolor='green', alpha=_alpha)
         ax.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
                         where=mov_data['positions'] < 1, facecolor='red', alpha=_alpha)
@@ -171,8 +171,8 @@ class Stock:
         losses.fillna(0, inplace=True)
         losses = losses * -1
         avg_losses = losses.rolling(14).mean()
-        rs = avg_gains/avg_losses
-        res['RSI'] = 100 - 100/(1 + rs)
+        rs = avg_gains / avg_losses
+        res['RSI'] = 100 - 100 / (1 + rs)
 
         # TODO: Add indicator also
         return res, ['-', 'r--']
@@ -198,8 +198,8 @@ class Stock:
 
     def get_macd_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
-        ema_12 = res[self.close].ewm(span=12).mean()
-        ema_26 = res[self.close].ewm(span=26).mean()
+        ema_12 = res[self.close].ewm(com=12 - 1).mean()
+        ema_26 = res[self.close].ewm(com=26 - 1).mean()
 
         res['macd'] = ema_12 - ema_26
         res['signal_line'] = res['macd'].ewm(span=9).mean()
@@ -230,7 +230,7 @@ class Stock:
         res = pd.DataFrame(self.hist_data[self.close])
         sar = np.zeros(res.size)
 
-        sar[0] = (self.hist_data[self.high][0] + self.hist_data[self.low][0])/2
+        sar[0] = (self.hist_data[self.high][0] + self.hist_data[self.low][0]) / 2
         if self.hist_data[self.close][0] < self.hist_data[self.close][1]:
             # Upward trend
             trend = True
@@ -241,8 +241,8 @@ class Stock:
             ep = self.hist_data[self.high][0]
 
         for i in range(1, len(sar)):
-            if trend and sar[i-1] >= self.hist_data[self.low][i] or \
-                    (not trend and sar[i-1] <= self.hist_data[self.high][i]):
+            if trend and sar[i - 1] >= self.hist_data[self.low][i] or \
+                    (not trend and sar[i - 1] <= self.hist_data[self.high][i]):
                 trend = not trend
                 sar[i] = ep
                 af = af_const
@@ -251,19 +251,19 @@ class Stock:
                 if trend:
                     if self.hist_data[self.high][i] > ep:
                         ep = self.hist_data[self.high][i]
-                        af = min(af+af_const, af_max_const)
+                        af = min(af + af_const, af_max_const)
                 else:
                     if self.hist_data[self.low][i] < ep:
                         ep = self.hist_data[self.low][i]
-                        af = min(af+af_const, af_max_const)
-                sar[i] = sar[i-1] + af * (ep - sar[i-1])
+                        af = min(af + af_const, af_max_const)
+                sar[i] = sar[i - 1] + af * (ep - sar[i - 1])
 
                 if trend:
-                    if sar[i] > self.hist_data[self.low][i] or sar[i] > self.hist_data[self.low][i-1]:
-                        sar[i] = min(self.hist_data[self.low][i], self.hist_data[self.low][i-1])
+                    if sar[i] > self.hist_data[self.low][i] or sar[i] > self.hist_data[self.low][i - 1]:
+                        sar[i] = min(self.hist_data[self.low][i], self.hist_data[self.low][i - 1])
                 else:
-                    if sar[i] < self.hist_data[self.high][i] or sar[i] < self.hist_data[self.high][i-1]:
-                        sar[i] = min(self.hist_data[self.high][i], self.hist_data[self.high][i-1])
+                    if sar[i] < self.hist_data[self.high][i] or sar[i] < self.hist_data[self.high][i - 1]:
+                        sar[i] = min(self.hist_data[self.high][i], self.hist_data[self.high][i - 1])
 
         res = pd.DataFrame(self.hist_data[self.close])
         res['SAR'] = pd.DataFrame(sar, index=res.index)
@@ -285,7 +285,7 @@ class Stock:
         l14 = self.get_rolling_data(self.close, [14], func=np.min, func_name='low')
         h14 = self.get_rolling_data(self.close, [14], func=np.max, func_name='high')
 
-        res['K'] = (res[self.close] - l14['low_14'])/(h14['high_14'] - l14['low_14']) * 100
+        res['K'] = (res[self.close] - l14['low_14']) / (h14['high_14'] - l14['low_14']) * 100
         res['D_fast'] = res['K'].rolling(3).mean()
         res['D_slow'] = res['D_fast'].rolling(3).mean()
 
@@ -324,9 +324,43 @@ class Stock:
         res['+dm'] = res['upmoves'].mask(~res['isup'], 0)
 
         res['isdown'] = (res['upmoves'] < res['lowmoves']) & (res['lowmoves'] > 0)
-        res['+dm'] = res['lowmoves'].mask(~res['isdown'], 0)
+        res['-dm'] = res['lowmoves'].mask(~res['isdown'], 0)
 
-        return res
+        res.drop(['isup', 'isdown'], axis=1, inplace=True)
+
+        tmp = pd.DataFrame(res[self.close].shift(1))
+        tmp['h'] = high
+        tmp['low'] = low
+        tmp['l_s'] = low.shift(1)
+
+        res['tr'] = tmp[['h', 'l_s']].max(axis=1) - tmp[['low', self.close]].min(axis=1)
+        res['atr'] = res['tr'].ewm(com=14 - 1).mean()
+        res['+di'] = 100 * ((res['+dm'].ewm(com=14 - 1).mean()) / res['atr'])
+        res['-di'] = 100 * ((res['-dm'].ewm(com=14 - 1).mean()) / res['atr'])
+        res['adx'] = 100 * ((res['+di'] - res['-di']).apply(abs)/(res['+di'] + res['-di'])).ewm(com=14-1).mean()
+
+        res.drop(['tr', 'atr', '+dm', '-dm', 'upmoves', 'lowmoves'], axis=1, inplace=True)
+        return res, ['b-', 'g--', 'r--', 'r']
+
+    @staticmethod
+    def plot_adx(p_data):
+        fig, ax = plt.subplots(2, 1)
+
+        p_data[p_data.columns[0]].plot(ax=ax[0])
+        ax[0].set_ylabel('Close value')
+
+        p_data['adx'].plot(ax=ax[1])
+        high_mark = 50 * np.ones(p_data.index.size)
+        low_mark = 20 * np.ones(p_data.index.size)
+        # mid_mark = 50 * np.ones(p_data.index.size)
+        ax[1].plot(p_data.index, high_mark)
+        ax[1].plot(p_data.index, low_mark)
+        # ax[1].plot(p_data.index, mid_mark)
+        ax[1].fill_between(p_data.index, high_mark, low_mark, alpha=_alpha, facecolor='red')
+        ax[1].set_ylabel('Stochastic indicator')
+        ax[1].legend()
+
+
 
 
 class StockAnalyzer:
