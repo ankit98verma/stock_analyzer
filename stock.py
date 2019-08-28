@@ -1,0 +1,366 @@
+from pandas_datareader import data
+import nsepy as nse
+from datetime import datetime
+import numpy as np
+import pandas as pd
+from matplotlib import pyplot as plt
+
+_alpha = 0.2
+
+
+class Stock:
+
+    def __init__(self, name, tracker, sector="Null"):
+        self.name = name
+        self.tracker = tracker
+        self.iter_value = -1
+        self.current_price = -1
+        self.hist_data = None
+        self.sector = sector
+        self.get_current_price()
+
+        self.close = self.tracker + '_Close'
+        self.low = self.tracker + '_Low'
+        self.high = self.tracker + '_High'
+        self.open = self.tracker + '_Open'
+
+    def get_hist_data(self, start_time, end_time):
+        if type(start_time) is str:
+            s = datetime.strptime(start_time, '%Y-%m-%d')
+        else:
+            s = start_time
+        if type(end_time) is str:
+            e = datetime.strptime(end_time, '%Y-%m-%d')
+        else:
+            e = end_time
+        tmp = nse.get_history(symbol=self.tracker, start=s, end=e)
+        tmp.index = pd.to_datetime(tmp.index)
+        c_new = []
+        for k in tmp.columns:
+            c_new.append(self.tracker + "_" + k)
+        tmp.columns = c_new
+        return tmp
+
+    def get_current_price(self):
+        current_quote = nse.get_quote(self.tracker)
+        self.current_price = current_quote['lastPrice']
+        return self.current_price
+
+    def get_tracker(self):
+        return self.tracker
+
+    def get_name(self):
+        return self.name
+
+    def set_name(self, n):
+        self.name = n
+
+    def set_tracker(self, n):
+        self.tracker = n
+        self.get_current_price()
+
+    def __repr__(self):
+        return 'Stock(' + self.name + ', ' + self.tracker + '): ' + str(self.current_price)
+
+    def __bool__(self):
+        return self.tracker == ''
+
+    def __iter__(self):
+        if self.iter_value < 0:
+            i = 0
+            while i < self.iter_value:
+                i += 1
+                yield self.get_current_price()
+        else:
+            while 1:
+                yield self.get_current_price()
+
+    def fill_hist_data(self, start, end):
+        self.hist_data = self.get_hist_data(start, end)
+
+    def get_clt(self, parameter):
+        returns = np.log(self.hist_data[parameter] / self.hist_data[parameter].shift(1))
+        r = returns.cumsum().apply(np.exp)
+        r = pd.DataFrame(r)
+        return r
+
+    def get_data(self, parameter):
+        r = pd.DataFrame(self.hist_data[parameter])
+        r.columns = [self.tracker + "_" + parameter]
+        return r
+
+    def get_rolling_data(self, parameter, window_sizes, win_type=None, func=np.mean, func_name='mean'):
+        parameter = StockAnalyzer.__update_parameter__(self, parameter)
+        k = pd.DataFrame(self.hist_data[parameter])
+        for w in window_sizes:
+            k[func_name + "_" + str(w)] = k[parameter].rolling(window=w, win_type=win_type).apply(func, raw=False)
+        return k
+
+    def get_bollinger_bonds_indicator(self, n, x):
+        mb = self.get_rolling_data('Close', [n])
+        std = self.get_rolling_data('Close', [n], func=np.std, func_name='std')
+        mb['up_' + str(n)] = mb['mean_' + str(n)] + x * std['std_' + str(n)]
+        mb['down_' + str(n)] = mb['mean_' + str(n)] - x * std['std_' + str(n)]
+        k1 = np.where(mb[self.tracker + "_Close"] >= mb['up_' + str(n)], -1, 0)
+        k2 = np.where(mb[self.tracker + "_Close"] <= mb['down_' + str(n)], 1, 0)
+        mb['positions'] = k1 + k2
+        return mb, ['-', 'b--', 'g--', 'r--']
+
+    @staticmethod
+    def plot_bollinger_bonds(bolli_data, style, n):
+        ax = bolli_data.plot(style=style, secondary_y='positions')
+        ax.fill_between(bolli_data.index, bolli_data['up_' + str(n)], bolli_data['down_' + str(n)], alpha=_alpha)
+
+    def get_moving_average_indicator(self, win1, win2):
+        parameter = 'Close'
+        roll_data = self.get_rolling_data(parameter, [win1, win2])
+        if win1 < win2:
+            roll_data['positions'] = np.where(roll_data['mean_' + str(win1)] > roll_data['mean_' + str(win2)], 1, -1)
+        else:
+            roll_data['positions'] = np.where(roll_data['mean_' + str(win1)] > roll_data['mean_' + str(win2)], -1, 1)
+        return roll_data, ['-', 'b--', 'g--']
+
+    @staticmethod
+    def plot_moving_average(mov_data, style, win1, win2):
+        ax = mov_data.plot(style=style, secondary_y='positions')
+        ax.fill_between(mov_data.index, mov_data['mean_'+str(win1)], mov_data['mean_'+str(win2)],
+                        where=mov_data['positions'] >= 1, facecolor='green', alpha=_alpha)
+        ax.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
+                        where=mov_data['positions'] < 1, facecolor='red', alpha=_alpha)
+
+    def get_ichimoku_kinko_hyo_indicator(self):
+        parameter = 'Close'
+        res = self.get_rolling_data(parameter, [9], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(parameter, [9], func=np.min, func_name='lows')
+        res['Tenkan_sen'] = (res['highs_9'] + lows['lows_9']) / 2
+        res = res.drop('highs_9', axis=1)
+
+        highs = self.get_rolling_data(parameter, [26], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(parameter, [26], func=np.min, func_name='lows')
+        res['Kijun_sen'] = (highs['highs_26'] + lows['lows_26']) / 2
+
+        res['Chikou_Span'] = res[self.tracker + '_Close'].shift(-26)
+
+        res['Senkou_Span_A'] = ((res['Kijun_sen'] + res['Tenkan_sen']) / 2).shift(26)
+
+        highs = self.get_rolling_data(parameter, [52], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(parameter, [52], func=np.min, func_name='lows')
+        res['Senkou_Span_B'] = ((highs['highs_52'] + lows['lows_52']) / 2).shift(26)
+
+        # TODO: Add position data
+        return res, ['b-', 'r--', 'b--', 'g--', 'r-', 'g-']
+
+    @staticmethod
+    def plot_ichimoku_kinko_hyo(p_data, style):
+        ax = p_data.plot(style=style)
+        ax.fill_between(p_data.index, p_data['Senkou_Span_A'], p_data['Senkou_Span_B'],
+                        where=p_data['Senkou_Span_A'] >= p_data['Senkou_Span_B'],
+                        facecolor='red', alpha=_alpha)
+        ax.fill_between(p_data.index, p_data['Senkou_Span_A'], p_data['Senkou_Span_B'],
+                        where=p_data['Senkou_Span_A'] < p_data['Senkou_Span_B'],
+                        facecolor='green', alpha=_alpha)
+
+    def get_rsi_indicator(self):
+        res = pd.DataFrame(self.hist_data[self.close])
+        p = res[self.close].pct_change()
+        gains = p.mask(p < 0, 0)
+        gains.fillna(0, inplace=True)
+        avg_gains = gains.rolling(14).mean()
+
+        losses = p.mask(p > 0, 0)
+        losses.fillna(0, inplace=True)
+        losses = losses * -1
+        avg_losses = losses.rolling(14).mean()
+        rs = avg_gains/avg_losses
+        res['RSI'] = 100 - 100/(1 + rs)
+
+        # TODO: Add indicator also
+        return res, ['-', 'r--']
+
+    @staticmethod
+    def plot_rsi(p_data):
+        fig, ax = plt.subplots(2, 1)
+
+        p_data[p_data.columns[0]].plot(ax=ax[0])
+        ax[0].set_ylabel('Close value')
+
+        p_data['RSI'].plot(style='r--', ax=ax[1])
+
+        high_mark = 70 * np.ones(p_data.index.size)
+        low_mark = 30 * np.ones(p_data.index.size)
+        mid_mark = 50 * np.ones(p_data.index.size)
+        ax[1].plot(p_data.index, high_mark)
+        ax[1].plot(p_data.index, low_mark)
+        ax[1].plot(p_data.index, mid_mark)
+        ax[1].fill_between(p_data.index, high_mark, mid_mark, alpha=_alpha, facecolor='green')
+        ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
+        ax[1].set_ylabel('RSI')
+
+    def get_macd_indicator(self):
+        res = pd.DataFrame(self.hist_data[self.close])
+        ema_12 = res[self.close].ewm(span=12).mean()
+        ema_26 = res[self.close].ewm(span=26).mean()
+
+        res['macd'] = ema_12 - ema_26
+        res['signal_line'] = res['macd'].ewm(span=9).mean()
+        res['histogram'] = res['macd'] - res['signal_line']
+
+        return res, ['-', 'b--', 'r--', 'g--']
+
+    @staticmethod
+    def plot_macd(p_data):
+        fig, ax = plt.subplots(2, 1)
+
+        p_data[p_data.columns[0]].plot(ax=ax[0])
+        ax[0].set_ylabel('Close value')
+
+        p_data['macd'].plot(ax=ax[1])
+        p_data['signal_line'].plot(ax=ax[1])
+        ax2 = ax[0].twinx()
+        ax2.bar(p_data.index, p_data['histogram'], label='MACD histogram', color='red', alpha=_alpha)
+        ax2.legend()
+        ax[0].legend()
+        ax[1].legend()
+
+    def get_parabolic_sar_indicator(self):
+        af_const = 0.04
+        af_max_const = 0.2
+
+        af = af_const
+        res = pd.DataFrame(self.hist_data[self.close])
+        sar = np.zeros(res.size)
+
+        sar[0] = (self.hist_data[self.high][0] + self.hist_data[self.low][0])/2
+        if self.hist_data[self.close][0] < self.hist_data[self.close][1]:
+            # Upward trend
+            trend = True
+            ep = self.hist_data[self.low][0]
+        else:
+            # downward trend
+            trend = False
+            ep = self.hist_data[self.high][0]
+
+        for i in range(1, len(sar)):
+            if trend and sar[i-1] >= self.hist_data[self.low][i] or \
+                    (not trend and sar[i-1] <= self.hist_data[self.high][i]):
+                trend = not trend
+                sar[i] = ep
+                af = af_const
+                ep = self.hist_data[self.high][i] if trend else self.hist_data[self.low][i]
+            else:
+                if trend:
+                    if self.hist_data[self.high][i] > ep:
+                        ep = self.hist_data[self.high][i]
+                        af = min(af+af_const, af_max_const)
+                else:
+                    if self.hist_data[self.low][i] < ep:
+                        ep = self.hist_data[self.low][i]
+                        af = min(af+af_const, af_max_const)
+                sar[i] = sar[i-1] + af * (ep - sar[i-1])
+
+                if trend:
+                    if sar[i] > self.hist_data[self.low][i] or sar[i] > self.hist_data[self.low][i-1]:
+                        sar[i] = min(self.hist_data[self.low][i], self.hist_data[self.low][i-1])
+                else:
+                    if sar[i] < self.hist_data[self.high][i] or sar[i] < self.hist_data[self.high][i-1]:
+                        sar[i] = min(self.hist_data[self.high][i], self.hist_data[self.high][i-1])
+
+        res = pd.DataFrame(self.hist_data[self.close])
+        res['SAR'] = pd.DataFrame(sar, index=res.index)
+
+        # TODO: Add positions to it
+
+        return res, ['-', '.']
+
+    @staticmethod
+    def plot_sar(p_data, style):
+        p_data.plot(style=style)
+        plt.title('SAR plot')
+
+        plt.legend()
+
+    def get_stochastic_indicator(self):
+
+        res = pd.DataFrame(self.hist_data[self.close])
+        l14 = self.get_rolling_data(self.close, [14], func=np.min, func_name='low')
+        h14 = self.get_rolling_data(self.close, [14], func=np.max, func_name='high')
+
+        res['K'] = (res[self.close] - l14['low_14'])/(h14['high_14'] - l14['low_14']) * 100
+        res['D_fast'] = res['K'].rolling(3).mean()
+        res['D_slow'] = res['D_fast'].rolling(3).mean()
+
+        # TODO: add positions data
+        return res, ['-', 'b--', 'r--', 'g--']
+
+    @staticmethod
+    def plot_stochastic(p_data):
+        fig, ax = plt.subplots(2, 1)
+
+        p_data[p_data.columns[0]].plot(ax=ax[0])
+        ax[0].set_ylabel('Close value')
+
+        p_data['K'].plot(style='r--', ax=ax[1])
+        p_data['D_fast'].plot(style='b--', ax=ax[1])
+
+        high_mark = 80 * np.ones(p_data.index.size)
+        low_mark = 20 * np.ones(p_data.index.size)
+        mid_mark = 50 * np.ones(p_data.index.size)
+        ax[1].plot(p_data.index, high_mark)
+        ax[1].plot(p_data.index, low_mark)
+        ax[1].plot(p_data.index, mid_mark)
+        ax[1].fill_between(p_data.index, high_mark, mid_mark, alpha=_alpha, facecolor='green')
+        ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
+        ax[1].set_ylabel('Stochastic indicator')
+        ax[1].legend()
+
+    def get_adx_indicator(self):
+        high = self.hist_data[self.high]
+        low = self.hist_data[self.low]
+        res = pd.DataFrame(self.hist_data[self.close])
+
+        res['upmoves'] = high - high.shift(1)
+        res['lowmoves'] = low.shift(1) - low
+        res['isup'] = (res['upmoves'] > res['lowmoves']) & (res['upmoves'] > 0)
+        res['+dm'] = res['upmoves'].mask(~res['isup'], 0)
+
+        res['isdown'] = (res['upmoves'] < res['lowmoves']) & (res['lowmoves'] > 0)
+        res['+dm'] = res['lowmoves'].mask(~res['isdown'], 0)
+
+        return res
+
+
+class StockAnalyzer:
+
+    def __init__(self, stocks, start, end):
+        self.stocks = stocks
+        for s in self.stocks:
+            s.fill_hist_data(start, end)
+
+    @staticmethod
+    def __update_parameter__(stock, parameter):
+        if stock.tracker in parameter:
+            return parameter
+        else:
+            return stock.tracker + "_" + parameter
+
+    def get_clts(self, parameter):
+        parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
+        result = pd.DataFrame(self.stocks[0].get_clt(parameter2))
+        if len(self.stocks) > 1:
+            for s in self.stocks[1:]:
+                parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
+                result = result.join(s.get_clt(parameter2))
+        return result
+
+    def get_price(self, parameter):
+        parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
+        result = pd.DataFrame(self.stocks[0].get_data(parameter2))
+        if len(self.stocks) > 1:
+            for s in self.stocks[1:]:
+                parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
+                result = result.join(s.get_data(parameter2))
+        return result
+
+    def resample_hist_data(self, sample_rate):
+        for s in self.stocks:
+            s.hist_data = s.hist_data.resample(sample_rate).last()
