@@ -1,4 +1,4 @@
-from pandas_datareader import data
+from strargparser import StrArgParser
 import nsepy as nse
 from datetime import datetime
 import numpy as np
@@ -60,7 +60,8 @@ class Stock:
         self.get_current_price()
 
     def __repr__(self):
-        return 'Stock(' + self.name + ', ' + self.tracker + '): ' + str(self.current_price)
+        return 'Stock(Name = ' + self.name + ', Tracker = ' + self.tracker + '): Current Price = ' + \
+               str(self.current_price)
 
     def __bool__(self):
         return self.tracker == ''
@@ -90,7 +91,7 @@ class Stock:
         return r
 
     def get_rolling_data(self, parameter, window_sizes, win_type=None, func=np.mean, func_name='mean'):
-        parameter = StockAnalyzer.__update_parameter__(self, parameter)
+        parameter = self.tracker + "_" + parameter
         k = pd.DataFrame(self.hist_data[parameter])
         for w in window_sizes:
             k[func_name + "_" + str(w)] = k[parameter].rolling(window=w, win_type=win_type).apply(func, raw=False)
@@ -392,31 +393,46 @@ class StockAnalyzer:
 
     def __init__(self):
         while True:
-            start_date = input(">> Enter start date of analysis (YYYY-MM-DD): ")
+            start_date = input(">> Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to quits}: ")
             if start_date == 'exit':
                 print('Exiting')
+                # exit(0)
                 break
             try:
                 start_date = datetime.strptime(start_date, '%Y-%m-%d')
                 break
             except ValueError:
-                print("Wrong date. Exiting")
+                print("Wrong date")
 
         self.stocks = []
         self.start = start_date
         self.end = datetime.now()
         for s in self.stocks:
             s.fill_hist_data(self.start, self.end)
+        self.parser = StrArgParser("Stock analyzer")
+        self.add_commands()
 
-    def cmd_add_stock(self):
-        stock_name = input(">> Enter the stock name: ")
-        stock_name = stock_name.replace(' ', '_')
-        stock_tracker = input(">> Enter the stock tracker:")
+    def add_commands(self):
+        self.parser.add_command('add', "Command to add stocks for analysis")
+        self.parser.add.add_optional_arguments('stock_name', '-sn', "--stock_name", "The stock name")
+        self.parser.add.add_optional_arguments('tracker', '-tr', "--tracker", "The tracker of the stock")
+
+        self.parser.add_command('list', "Lists all the stock added")
+
+        self.parser.add_command('help', "Shows the details of all the commands")
+
+    def cmd_add_stock(self, res):
+        if len(res) >= 2:
+            stock_name = res['-sn']
+            stock_tracker = res['-tr']
+        else:
+            stock_name = input(">> Enter the stock name: ")
+            stock_tracker = input(">> Enter the stock tracker: ")
 
         try:
             print("Fetching stock details")
             stock = Stock(stock_name, stock_tracker)
-            print(stock)
+
         except IndexError:
             print("Tracker name is wrong. Exiting")
             return
@@ -426,17 +442,34 @@ class StockAnalyzer:
 
         stock.fill_hist_data(self.start, self.end)
         self.stocks.append(stock)
+        print(stock)
         print("Stock added")
 
+    def cmd_list_stock(self):
+        if len(self.stocks) == 0:
+            print("Empty")
+        else:
+            for s in self.stocks:
+                print(s)
+
+    def cmd_show_help(self):
+        self.parser.show_help()
+
     def start_command_line(self):
-        s = input(">>")
+        s = (input(">>").strip(' '))
         while s != "exit":
-            if s == 'add':
-                self.cmd_add_stock()
-            elif s == 'list':
-                for s in self.stocks:
-                    print(s)
-            s = input(">>")
+            (cmd, res) = self.parser.decode_command(s)
+            if res is None:
+                s = (input(">> ").strip(' '))
+                continue
+            if cmd == 'add':
+                self.cmd_add_stock(res)
+            elif cmd == 'list':
+                self.cmd_list_stock()
+            elif cmd == 'help':
+                self.cmd_show_help()
+
+            s = (input(">> ").strip(' '))
 
     @staticmethod
     def __update_parameter__(stock, parameter):
