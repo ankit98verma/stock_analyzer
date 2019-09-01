@@ -107,9 +107,18 @@ class Stock:
         return mb, ['-', 'b--', 'g--', 'r--']
 
     @staticmethod
-    def plot_bollinger_bonds(bolli_data, style, n):
-        ax = bolli_data.plot(style=style, secondary_y='positions')
-        ax.fill_between(bolli_data.index, bolli_data['up_' + str(n)], bolli_data['down_' + str(n)], alpha=_alpha)
+    def plot_bollinger_bonds(bolli_data, n):
+        fig, ax = plt.subplots(1, 1)
+        ax2 = ax.twinx()
+
+        columns = bolli_data.columns
+        columns = columns[:-1]
+        bolli_data[columns].plot(ax=ax2)
+
+        ax2.fill_between(bolli_data.index, bolli_data['up_' + str(n)], bolli_data['down_' + str(n)], alpha=_alpha)
+        bolli_data['positions'].plot(style='r', ax=ax)
+
+        ax.grid()
 
     def get_moving_average_indicator(self, win1, win2):
         parameter = 'Close'
@@ -121,12 +130,19 @@ class Stock:
         return roll_data, ['-', 'b--', 'g--']
 
     @staticmethod
-    def plot_moving_average(mov_data, style, win1, win2):
-        ax = mov_data.plot(style=style, secondary_y='positions')
-        ax.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
-                        where=mov_data['positions'] >= 1, facecolor='green', alpha=_alpha)
-        ax.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
-                        where=mov_data['positions'] < 1, facecolor='red', alpha=_alpha)
+    def plot_moving_average(mov_data, win1, win2):
+        fig, ax = plt.subplots(1, 1)
+        ax2 = ax.twinx()
+
+        columns = mov_data.columns
+        columns = columns[:-1]
+        mov_data[columns].plot(ax=ax2)
+        ax2.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
+                         where=mov_data['positions'] >= 1, facecolor='green', alpha=_alpha)
+        ax2.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
+                         where=mov_data['positions'] < 1, facecolor='red', alpha=_alpha)
+        mov_data['positions'].plot(ax=ax)
+        ax.grid()
 
     def get_ichimoku_kinko_hyo_indicator(self):
         parameter = 'Close'
@@ -159,6 +175,8 @@ class Stock:
         ax.fill_between(p_data.index, p_data['Senkou_Span_A'], p_data['Senkou_Span_B'],
                         where=p_data['Senkou_Span_A'] < p_data['Senkou_Span_B'],
                         facecolor='green', alpha=_alpha)
+        ax.yaxis.tick_right()
+        ax.grid()
 
     def get_rsi_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
@@ -183,6 +201,8 @@ class Stock:
 
         p_data[p_data.columns[0]].plot(ax=ax[0])
         ax[0].set_ylabel('Close value')
+        ax[0].yaxis.tick_right()
+        ax[0].grid()
 
         p_data['RSI'].plot(style='r--', ax=ax[1])
 
@@ -211,14 +231,17 @@ class Stock:
     def plot_macd(p_data):
         fig, ax = plt.subplots(2, 1)
 
-        p_data[p_data.columns[0]].plot(ax=ax[0])
-        ax[0].set_ylabel('Close value')
+        ax2 = ax[0].twinx()
+
+        p_data[p_data.columns[0]].plot(ax=ax2)
+        ax2.set_ylabel('Close value')
+        ax2.grid()
+        ax2.legend()
 
         p_data['macd'].plot(ax=ax[1])
         p_data['signal_line'].plot(ax=ax[1])
-        ax2 = ax[0].twinx()
-        ax2.bar(p_data.index, p_data['histogram'], label='MACD histogram', color='red', alpha=_alpha)
-        ax2.legend()
+
+        ax[0].bar(p_data.index, p_data['histogram'], label='MACD histogram', color='red', alpha=_alpha)
         ax[0].legend()
         ax[1].legend()
 
@@ -274,7 +297,9 @@ class Stock:
 
     @staticmethod
     def plot_sar(p_data, style):
-        p_data.plot(style=style)
+        ax = p_data.plot(style=style)
+        ax.yaxis.tick_right()
+        ax.grid()
         plt.title('SAR plot')
 
         plt.legend()
@@ -298,9 +323,12 @@ class Stock:
 
         p_data[p_data.columns[0]].plot(ax=ax[0])
         ax[0].set_ylabel('Close value')
+        ax[0].yaxis.tick_right()
+        ax[0].grid()
 
         p_data['K'].plot(style='r--', ax=ax[1])
         p_data['D_fast'].plot(style='b--', ax=ax[1])
+        ax[1].yaxis.tick_right()
 
         high_mark = 80 * np.ones(p_data.index.size)
         low_mark = 20 * np.ones(p_data.index.size)
@@ -337,7 +365,7 @@ class Stock:
         res['atr'] = res['tr'].ewm(com=14 - 1).mean()
         res['+di'] = 100 * ((res['+dm'].ewm(com=14 - 1).mean()) / res['atr'])
         res['-di'] = 100 * ((res['-dm'].ewm(com=14 - 1).mean()) / res['atr'])
-        res['adx'] = 100 * ((res['+di'] - res['-di']).apply(abs)/(res['+di'] + res['-di'])).ewm(com=14-1).mean()
+        res['adx'] = 100 * ((res['+di'] - res['-di']).apply(abs) / (res['+di'] + res['-di'])).ewm(com=14 - 1).mean()
 
         res.drop(['tr', 'atr', '+dm', '-dm', 'upmoves', 'lowmoves'], axis=1, inplace=True)
         return res, ['b-', 'g--', 'r--', 'r']
@@ -348,27 +376,67 @@ class Stock:
 
         p_data[p_data.columns[0]].plot(ax=ax[0])
         ax[0].set_ylabel('Close value')
+        ax[0].yaxis.tick_right()
 
         p_data['adx'].plot(ax=ax[1])
         high_mark = 50 * np.ones(p_data.index.size)
         low_mark = 20 * np.ones(p_data.index.size)
-        # mid_mark = 50 * np.ones(p_data.index.size)
         ax[1].plot(p_data.index, high_mark)
         ax[1].plot(p_data.index, low_mark)
-        # ax[1].plot(p_data.index, mid_mark)
         ax[1].fill_between(p_data.index, high_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
 
 
-
-
 class StockAnalyzer:
 
-    def __init__(self, stocks, start, end):
-        self.stocks = stocks
+    def __init__(self):
+        while True:
+            start_date = input(">> Enter start date of analysis (YYYY-MM-DD): ")
+            if start_date == 'exit':
+                print('Exiting')
+                break
+            try:
+                start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                break
+            except ValueError:
+                print("Wrong date. Exiting")
+
+        self.stocks = []
+        self.start = start_date
+        self.end = datetime.now()
         for s in self.stocks:
-            s.fill_hist_data(start, end)
+            s.fill_hist_data(self.start, self.end)
+
+    def cmd_add_stock(self):
+        stock_name = input(">> Enter the stock name: ")
+        stock_name = stock_name.replace(' ', '_')
+        stock_tracker = input(">> Enter the stock tracker:")
+
+        try:
+            print("Fetching stock details")
+            stock = Stock(stock_name, stock_tracker)
+            print(stock)
+        except IndexError:
+            print("Tracker name is wrong. Exiting")
+            return
+        except:
+            print("Connection error. Exiting")
+            return ""
+
+        stock.fill_hist_data(self.start, self.end)
+        self.stocks.append(stock)
+        print("Stock added")
+
+    def start_command_line(self):
+        s = input(">>")
+        while s != "exit":
+            if s == 'add':
+                self.cmd_add_stock()
+            elif s == 'list':
+                for s in self.stocks:
+                    print(s)
+            s = input(">>")
 
     @staticmethod
     def __update_parameter__(stock, parameter):
