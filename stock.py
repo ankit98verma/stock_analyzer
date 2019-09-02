@@ -1,6 +1,7 @@
 from strargparser import StrArgParser
 import nsepy as nse
 from datetime import datetime
+from datetime import timedelta
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
@@ -395,11 +396,22 @@ class StockAnalyzer:
     def __init__(self, session_name):
         self.session_name = session_name
         self.input_string = "("+self.session_name+")>> "
+        self.default_ana_dur = timedelta(6*365/12)
+        self.end = datetime.now()
+        self.auto_save = False
+        self.stocks = []
+        self.save_name = ""
+        self.test = 5
+
+        self.parser = StrArgParser("Stock analyzer")
+        self.add_commands()
+
         while True:
-            start_date = input(self.input_string+"Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to quits}: ")
+            start_date = input(self.input_string+"Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to get "
+                                                 "default analysis duration}: ")
             if start_date == 'exit':
-                print('Exiting '+self.session_name)
-                # exit(0)
+                start_date = self.end - self.default_ana_dur
+                print('Default analysis duration has been set')
                 break
             try:
                 start_date = datetime.strptime(start_date, '%Y-%m-%d')
@@ -407,15 +419,11 @@ class StockAnalyzer:
             except ValueError:
                 print("Wrong date")
 
-        self.auto_save = False
-        self.save_name = ""
-        self.stocks = []
         self.start = start_date
-        self.end = datetime.now()
         for s in self.stocks:
             s.fill_hist_data(self.start, self.end)
-        self.parser = StrArgParser("Stock analyzer")
-        self.add_commands()
+
+        self.private_params = ['private_params', 'input_string', 'stocks', 'save_name', 'parser']
 
     def update_stock_details(self):
         if self.end.date() != datetime.now().date():
@@ -442,23 +450,19 @@ class StockAnalyzer:
                                                                        "false. Only accept 'true' or 'false' "
                                                                        "if any other value provided then command is "
                                                                        "neglected", param_type=bool)
+
+        self.parser.add_command('ls_ses_params', 'List the session parameters')
+        self.parser.add_command('ch_ses_params', "Update session parameters", inf_positional=True)
+
         self.parser.add_command('exit', 'Exits the session')
-
-        # self.parser.add_command('tst', "Testing command")
-        # self.parser.get_command('tst').add_compulsory_arguments('-t1', '--t1', "test1", param_type=int)
-        # self.parser.get_command('tst').add_optional_arguments('-t2', '--t2', "test2", param_type=float)
-        # self.parser.get_command('tst').add_optional_arguments('-t3', '--t3', "test3", param_type=bool)
-        # self.parser.get_command('tst').add_optional_arguments('-t4', '--t4', "test3", param_type=str)
-        # self.parser.get_command('tst').add_positional_arguments(1,'-t4', '--t4', "test3", param_type=int)
-
 
     def cmd_add_stock(self, res):
         if len(res) >= 2:
             stock_name = res['-sn']
             stock_tracker = res['-tr']
         else:
-            stock_name = input(">> Enter the stock name: ")
-            stock_tracker = input(">> Enter the stock tracker: ")
+            stock_name = input(self.input_string+"Enter the stock name: ")
+            stock_tracker = input(self.input_string+"Enter the stock tracker: ")
 
         try:
             print("Fetching stock details")
@@ -495,6 +499,55 @@ class StockAnalyzer:
             pk.dump(self, f)
             print("Session saved to the file "+fn)
 
+    def cmd_show_params(self):
+        params = self.__dict__
+        val = [type(i) for i in list(params.values())]
+        i = 0
+        for k, v in params.items():
+            if k not in self.private_params:
+                print(k + "\t" + str(val[i]).replace('<class ', "").replace(">", "") + "\t\t" + str(v))
+            i += 1
+
+    def cmd_ch_params(self, res):
+        param_dict = self.__dict__
+        state = 'param'
+        param = ""
+        is_skip = False
+        for v in res.values():
+            if is_skip:
+                is_skip = False
+                continue
+            if state == 'param':
+                if v in self.private_params:
+                    print("'"+v + "' is wrong parameter")
+                    is_skip = True
+                    continue
+                param = v
+                state = 'value'
+            elif state == 'value':
+                val = v
+                val_error_string = ""
+                try:
+                    if type(param_dict[param]) is datetime:
+                        val_error_string = ". Value should be in format YYYY-MM-DD"
+                        val = datetime.strptime(val, '%Y-%m-%d')
+                    elif type(param_dict[param]) is timedelta:
+                        val_error_string = ". Value should be an integer"
+                        val = timedelta(int(val))
+                    else:
+                        val_error_string = ". Value should be {0}".format(
+                            str(type(param_dict[param])).replace('<class ', "").replace(">", ""))
+                        val = type(param_dict[param])(val)
+                except ValueError:
+                    print("Value for the parameter '" + param + "' is wrong"+val_error_string)
+                    continue
+                finally:
+                    state = 'param'
+                self.__setattr__(param, val)
+            else:
+                print("Unexpected error has occurred")
+                break
+
     def start_command_line(self):
         while True:
             s = (input(self.input_string).strip(' '))
@@ -509,8 +562,12 @@ class StockAnalyzer:
                 self.cmd_show_help()
             elif cmd == 'save_session':
                 self.cmd_save_session(res)
-            elif cmd == 'tst':
-                print(res)
+            elif cmd == 'cmd_list':
+                self.parser.show_cmd_list(is_verbose=(len(res) > 0))
+            elif cmd == 'ls_ses_params':
+                self.cmd_show_params()
+            elif cmd == 'ch_ses_params':
+                self.cmd_ch_params(res)
             elif cmd == 'exit':
                 if self.auto_save:
                     self.cmd_save_session({'-fn': self.save_name})

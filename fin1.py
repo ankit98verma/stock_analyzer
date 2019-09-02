@@ -69,6 +69,7 @@ def handle_init():
         elif cmd == 'start_session':
             ana = StockAnalyzer(res['-sn'])
             ana.start_command_line()
+
         elif cmd == 'load_session':
             try:
                 with open(res['-fn'], 'rb') as f:
@@ -79,6 +80,8 @@ def handle_init():
                     ana.start_command_line()
             except FileNotFoundError:
                 print('File not found')
+        elif cmd == 'cmd_list':
+            par.show_cmd_list(is_verbose=(len(res) > 0))
         elif cmd == 'help':
             par.show_help()
 

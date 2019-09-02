@@ -2,7 +2,7 @@
 
 class Command:
 
-    def __init__(self, command_name, description):
+    def __init__(self, command_name, description, inf_positional):
         self.description = description
         self.command_name = command_name
         self.positional_arguments = dict()
@@ -11,6 +11,7 @@ class Command:
 
         self.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
 
+        self.inf_positional = inf_positional
         self.has_positional = False
         self.has_optional = True
         self.has_compulsory = False
@@ -28,6 +29,8 @@ class Command:
         if self.has_positional:
             for v in self.positional_arguments.values():
                 string += " "+v['sh']
+        if self.inf_positional:
+            string += " ..."
 
         return string
 
@@ -53,7 +56,8 @@ class Command:
             for v in self.optional_arguments.values():
                 string += "\t" + v['sh'] + "\t" + str(v['type']).replace('<class ', "").replace(">", "") + "\t" + v[
                     'lf'] + "\t" + v['des'] + "\n"
-
+        if self.inf_positional:
+            string += "Infinite positional parameters\n"
         print(string)
 
     def add_positional_arguments(self, position, short_form, long_form, description, param_type=str):
@@ -168,7 +172,10 @@ class Command:
             else:
                 print("Unknown argument "+options[start])
                 return None
-
+            if self.optional_arguments[res_key]['type'] is None:
+                res[res_key] = None
+                options.remove(options[start])
+                continue
             try:
                 if options[start+1][0] == '-':
                     raise IndexError
@@ -193,10 +200,10 @@ class Command:
                 return None
 
         if self.has_positional:
-            if len(options) != len(self.positional_arguments):
+            if len(options) < len(self.positional_arguments):
                 print("All positional arguments are not found")
                 return None
-            i = 0
+
             for k, v in self.positional_arguments.items():
                 try:
                     if v['type'] == bool:
@@ -209,14 +216,18 @@ class Command:
                     else:
                         val = v['type'](options[0])
                     res[v['sh']] = val
-                    i += 1
                 except ValueError:
                     print("Wrong value is given for the position "+str(k))
                     return None
-            # print("Taking care of positional arguments")
 
-        if len(options) > 1:
-            print("some arguments, not required, have been ignored")
+        if self.inf_positional:
+            i = 1
+            for v in options:
+                res['inf'+str(i)] = v
+                i += 1
+        else:
+            if len(options) > 1:
+                print("some arguments, not required, have been ignored")
         return res
 
 
@@ -226,15 +237,26 @@ class StrArgParser:
         self.commands = dict()
         self.description = description
 
+        self.add_command('cmd_list', 'Lists all the available command with usage')
+        self.get_command('cmd_list').add_optional_arguments('-v', '--verbose', "Give the output in detail",
+                                                            param_type=None)
+
     def __repr__(self):
         return self.description
 
     def get_command(self, name):
         return self.commands[name]
 
-    def add_command(self, command, description):
-        c = Command(command, description)
+    def add_command(self, command, description, inf_positional=False):
+        c = Command(command, description, inf_positional)
         self.commands[command] = c
+
+    def show_cmd_list(self, is_verbose=False):
+        for k, v in self.commands.items():
+            print("Command: " + k),
+            if is_verbose:
+                print(v)
+                print("\n"+v.description+"\n\n\t\t---x---\n")
 
     def show_help(self):
         for k, v in self.commands.items():
