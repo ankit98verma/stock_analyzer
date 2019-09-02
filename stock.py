@@ -398,10 +398,9 @@ class StockAnalyzer:
         self.input_string = "("+self.session_name+")>> "
         self.default_ana_dur = timedelta(6*365/12)
         self.end = datetime.now()
-        self.auto_save = False
-        self.stocks = []
-        self.save_name = ""
-        self.test = 5
+        self.auto_save = True
+        self.stocks = dict()
+        self.save_name = session_name
 
         self.parser = StrArgParser("Stock analyzer")
         self.add_commands()
@@ -420,15 +419,16 @@ class StockAnalyzer:
                 print("Wrong date")
 
         self.start = start_date
-        for s in self.stocks:
+        for s in self.stocks.values():
             s.fill_hist_data(self.start, self.end)
 
-        self.private_params = ['private_params', 'input_string', 'stocks', 'save_name', 'parser']
+        self.private_params = ['private_params', 'input_string', 'stocks', 'parser']
 
-    def update_stock_details(self):
-        if self.end.date() != datetime.now().date():
+    def update_stock_details(self, force=False):
+        if self.end.date() != datetime.now().date() or force:
             self.end = datetime.now()
-            for s in self.stocks:
+            for s in self.stocks.values():
+                print("Updating: "+s.get_name())
                 s.fill_hist_data(self.start, self.end)
 
     def add_commands(self):
@@ -453,7 +453,7 @@ class StockAnalyzer:
 
         self.parser.add_command('ls_ses_params', 'List the session parameters')
         self.parser.add_command('ch_ses_params', "Update session parameters", inf_positional=True)
-
+        self.parser.add_command('update_stocks', 'Updates the stock data', inf_positional=True)
         self.parser.add_command('exit', 'Exits the session')
 
     def cmd_add_stock(self, res):
@@ -467,7 +467,6 @@ class StockAnalyzer:
         try:
             print("Fetching stock details")
             stock = Stock(stock_name, stock_tracker)
-
         except IndexError:
             print("Tracker name is wrong. Exiting")
             return
@@ -476,7 +475,7 @@ class StockAnalyzer:
             return ""
 
         stock.fill_hist_data(self.start, self.end)
-        self.stocks.append(stock)
+        self.stocks[stock_name] = stock
         print(stock)
         print("Stock added")
 
@@ -484,7 +483,7 @@ class StockAnalyzer:
         if len(self.stocks) == 0:
             print("Empty")
         else:
-            for s in self.stocks:
+            for s in self.stocks.values():
                 print(s)
 
     def cmd_show_help(self):
@@ -534,6 +533,14 @@ class StockAnalyzer:
                     elif type(param_dict[param]) is timedelta:
                         val_error_string = ". Value should be an integer"
                         val = timedelta(int(val))
+                    elif type(param_dict[param]) is bool:
+                        if val == 'true':
+                            val = True
+                        elif val == 'false':
+                            val = False
+                        else:
+                            val_error_string = ". Value should be either 'true' or 'false'"
+                            raise ValueError
                     else:
                         val_error_string = ". Value should be {0}".format(
                             str(type(param_dict[param])).replace('<class ', "").replace(">", ""))
@@ -541,12 +548,23 @@ class StockAnalyzer:
                 except ValueError:
                     print("Value for the parameter '" + param + "' is wrong"+val_error_string)
                     continue
+                except KeyError:
+                    print("Parameter '"+param+"' not found")
+                    continue
                 finally:
                     state = 'param'
                 self.__setattr__(param, val)
             else:
                 print("Unexpected error has occurred")
                 break
+
+    def cmd_update_stocks(self, res):
+        if len(res) == 0:
+            self.update_stock_details(force=True)
+        else:
+            for v in res.values():
+                print("Updating: "+self.stocks[v].get_name())
+                self.stocks[v].fill_hist_data(self.start, self.end)
 
     def start_command_line(self):
         while True:
@@ -568,6 +586,8 @@ class StockAnalyzer:
                 self.cmd_show_params()
             elif cmd == 'ch_ses_params':
                 self.cmd_ch_params(res)
+            elif cmd == 'update_stocks':
+                self.cmd_update_stocks(res)
             elif cmd == 'exit':
                 if self.auto_save:
                     self.cmd_save_session({'-fn': self.save_name})
@@ -581,24 +601,24 @@ class StockAnalyzer:
         else:
             return stock.tracker + "_" + parameter
 
-    def get_clts(self, parameter):
-        parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
-        result = pd.DataFrame(self.stocks[0].get_clt(parameter2))
-        if len(self.stocks) > 1:
-            for s in self.stocks[1:]:
-                parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
-                result = result.join(s.get_clt(parameter2))
-        return result
+    # def get_clts(self, parameter):
+    #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
+    #     result = pd.DataFrame(self.stocks[0].get_clt(parameter2))
+    #     if len(self.stocks) > 1:
+    #         for s in self.stocks[1:]:
+    #             parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
+    #             result = result.join(s.get_clt(parameter2))
+    #     return result
 
-    def get_price(self, parameter):
-        parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
-        result = pd.DataFrame(self.stocks[0].get_data(parameter2))
-        if len(self.stocks) > 1:
-            for s in self.stocks[1:]:
-                parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
-                result = result.join(s.get_data(parameter2))
-        return result
+    # def get_price(self, parameter):
+    #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
+    #     result = pd.DataFrame(self.stocks[0].get_data(parameter2))
+    #     if len(self.stocks) > 1:
+    #         for s in self.stocks[1:]:
+    #             parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
+    #             result = result.join(s.get_data(parameter2))
+    #     return result
 
     def resample_hist_data(self, sample_rate):
-        for s in self.stocks:
+        for s in self.stocks.values():
             s.hist_data = s.hist_data.resample(sample_rate).last()
