@@ -9,7 +9,7 @@ class Command:
         self.compulsory_arguments = dict()
         self.optional_arguments = dict()
 
-        self.add_optional_arguments('Help', '-h', '--help', 'Gives the details of the command')
+        self.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
 
         self.has_positional = False
         self.has_optional = True
@@ -39,17 +39,20 @@ class Command:
         if self.has_positional:
             string += "positional arguments (all compulsory):\n"
             for v in self.positional_arguments.values():
-                string += "\t"+v['sh']+"\t"+v['lf']+"\t"+v['des']+"\n"
+                string += "\t" + v['sh'] + "\t" + str(v['type']).replace('<class ', "").replace(">", "") + "\t" + v[
+                    'lf'] + "\t" + v['des'] + "\n"
 
         if self.has_compulsory:
             string += "compulsory arguments with options:\n"
             for v in self.compulsory_arguments.values():
-                string += "\t"+v['sh']+"\t"+v['lf']+"\t"+v['des']+"\n"
+                string += "\t" + v['sh'] + "\t" + str(v['type']).replace('<class ', "").replace(">", "") + "\t" + v[
+                    'lf'] + "\t" + v['des'] + "\n"
 
         if self.has_optional:
             string += "optional arguments with options:\n"
             for v in self.optional_arguments.values():
-                string += "\t" + v['sh'] + "\t" + v['lf'] + "\t" + v['des'] + "\n"
+                string += "\t" + v['sh'] + "\t" + str(v['type']).replace('<class ', "").replace(">", "") + "\t" + v[
+                    'lf'] + "\t" + v['des'] + "\n"
 
         print(string)
 
@@ -61,21 +64,21 @@ class Command:
         self.positional_arguments[position]['des'] = description
         self.positional_arguments[position]['type'] = param_type
 
-    def add_optional_arguments(self, name, short_form, long_form, description, param_type=str):
+    def add_optional_arguments(self, short_form, long_form, description, param_type=str):
         self.has_optional = True
-        self.optional_arguments[name] = dict()
-        self.optional_arguments[name]['sh'] = short_form
-        self.optional_arguments[name]['lf'] = long_form
-        self.optional_arguments[name]['des'] = description
-        self.optional_arguments[name]['type'] = param_type
+        self.optional_arguments[short_form] = dict()
+        self.optional_arguments[short_form]['sh'] = short_form
+        self.optional_arguments[short_form]['lf'] = long_form
+        self.optional_arguments[short_form]['des'] = description
+        self.optional_arguments[short_form]['type'] = param_type
 
-    def add_compulsory_arguments(self, name, short_form, long_form, description, param_type=str):
+    def add_compulsory_arguments(self, short_form, long_form, description, param_type=str):
         self.has_compulsory = True
-        self.compulsory_arguments[name] = dict()
-        self.compulsory_arguments[name]['sh'] = short_form
-        self.compulsory_arguments[name]['lf'] = long_form
-        self.compulsory_arguments[name]['des'] = description
-        self.compulsory_arguments[name]['type'] = param_type
+        self.compulsory_arguments[short_form] = dict()
+        self.compulsory_arguments[short_form]['sh'] = short_form
+        self.compulsory_arguments[short_form]['lf'] = long_form
+        self.compulsory_arguments[short_form]['des'] = description
+        self.compulsory_arguments[short_form]['type'] = param_type
 
     def get_short_list(self, get_dict):
         res = []
@@ -113,17 +116,30 @@ class Command:
                     except ValueError:
                         print(v['sh']+" or "+v['lf'] + " not present in the options")
                         return None
-                if pos != -1:
-                    try:
-                        if options[pos+1][0] == '-':
-                            raise IndexError
+
+                try:
+                    if options[pos+1][0] == '-':
+                        raise IndexError
+                    else:
+                        if v['type'] == bool:
+                            if options[pos + 1] == 'true':
+                                val = True
+                            elif options[pos+ 1] == 'false':
+                                val = False
+                            else:
+                                raise ValueError
                         else:
-                            res[v['sh']] = v['type'](options[pos + 1])
-                            options.remove(v[remove_text])
-                            options.remove(options[pos])
-                    except IndexError:
-                        print("No value given for option "+v['sh'])
-                        return None
+                            val = v['type'](options[pos + 1])
+                        res[v['sh']] = val
+                        # res[v['sh']] = v['type'](options[pos + 1])
+                        options.remove(v[remove_text])
+                        options.remove(options[pos])
+                except IndexError:
+                    print("No value is given for option "+v['sh'])
+                    return None
+                except ValueError:
+                    print("Wrong value is given for option "+v['sh'])
+                    return None
 
         if not self.has_optional and not self.has_positional and len(options):
             print("some options, not required, have been ignored")
@@ -134,11 +150,8 @@ class Command:
         while self.has_optional and len(options):
             start = -1
             for k in options:
-                if len(k) > 0:
-                    if k[0] == '-':
-                        start = options.index(k)
-                        break
-                else:
+                if k[0] == '-':
+                    start = options.index(k)
                     break
             if start == -1:
                 break
@@ -160,11 +173,23 @@ class Command:
                 if options[start+1][0] == '-':
                     raise IndexError
                 else:
-                    res[res_key] = (options[start+1])
+                    if self.optional_arguments[res_key]['type'] == bool:
+                        if options[start+1] == 'true':
+                            val = True
+                        elif options[start+1] == 'false':
+                            val = False
+                        else:
+                            raise ValueError
+                    else:
+                        val = self.optional_arguments[res_key]['type']((options[start+1]))
+                    res[res_key] = val
                     options.remove(options[start])
                     options.remove(options[start])
             except IndexError:
-                print("No value given for option "+options[start])
+                print("No value is given for option "+options[start])
+                return None
+            except ValueError:
+                print("Wrong value is given for option " + self.optional_arguments[res_key]['sh'])
                 return None
 
         if self.has_positional:
@@ -173,9 +198,22 @@ class Command:
                 return None
             i = 0
             for k, v in self.positional_arguments.items():
-                res[k] = v['type'](options[0])
-                i += 1
-            print("Taking care of positional arguments")
+                try:
+                    if v['type'] == bool:
+                        if options[0] == 'true':
+                            val = True
+                        elif options[0] == 'false':
+                            val = False
+                        else:
+                            raise ValueError
+                    else:
+                        val = v['type'](options[0])
+                    res[v['sh']] = val
+                    i += 1
+                except ValueError:
+                    print("Wrong value is given for the position "+str(k))
+                    return None
+            # print("Taking care of positional arguments")
 
         if len(options) > 1:
             print("some arguments, not required, have been ignored")

@@ -47,10 +47,10 @@ def add_commands():
     par.add_command("exit", "Ends the program")
 
     par.add_command("start_session", "Starts a new session")
-    par.get_command('start_session').add_compulsory_arguments('Session_name', '-sn', '--session_name', 'Session name')
+    par.get_command('start_session').add_compulsory_arguments('-sn', '--session_name', 'Session name')
 
     par.add_command('load_session', "Loads a previously saved session")
-    par.get_command('load_session').add_compulsory_arguments('File_name', '-fn', '--file_name',
+    par.get_command('load_session').add_compulsory_arguments('-fn', '--file_name',
                                                              'The name/address of the file from '
                                                              'which the session is to be loaded')
 

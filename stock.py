@@ -425,24 +425,32 @@ class StockAnalyzer:
 
     def add_commands(self):
         self.parser.add_command('add', "Command to add stocks for analysis")
-        self.parser.get_command('add').add_optional_arguments('stock_name', '-sn', "--stock_name", "The stock name")
-        self.parser.get_command('add').add_optional_arguments('tracker', '-tr', "--tracker", "The tracker of the stock")
+        self.parser.get_command('add').add_optional_arguments('-sn', "--stock_name", "The stock name")
+        self.parser.get_command('add').add_optional_arguments('-tr', "--tracker", "The tracker of the stock")
 
         self.parser.add_command('list', "Lists all the stock added")
 
         self.parser.add_command('help', "Shows the details of all the commands")
 
         self.parser.add_command('save_session', "Saves the current session to a file")
-        self.parser.get_command('save_session').add_compulsory_arguments('file_name', '-fn', '--file_name',
+        self.parser.get_command('save_session').add_compulsory_arguments('-fn', '--file_name',
                                                                          "The name/address of the "
                                                                          "file where the session "
                                                                          "is to be saved")
-        self.parser.get_command('save_session').add_optional_arguments('auto_save', '-as', '--auto_save',
+        self.parser.get_command('save_session').add_optional_arguments('-as', '--auto_save',
                                                                        "Sets the auto save true/false. By default "
                                                                        "false. Only accept 'true' or 'false' "
                                                                        "if any other value provided then command is "
-                                                                       "neglected")
+                                                                       "neglected", param_type=bool)
         self.parser.add_command('exit', 'Exits the session')
+
+        # self.parser.add_command('tst', "Testing command")
+        # self.parser.get_command('tst').add_compulsory_arguments('-t1', '--t1', "test1", param_type=int)
+        # self.parser.get_command('tst').add_optional_arguments('-t2', '--t2', "test2", param_type=float)
+        # self.parser.get_command('tst').add_optional_arguments('-t3', '--t3', "test3", param_type=bool)
+        # self.parser.get_command('tst').add_optional_arguments('-t4', '--t4', "test3", param_type=str)
+        # self.parser.get_command('tst').add_positional_arguments(1,'-t4', '--t4', "test3", param_type=int)
+
 
     def cmd_add_stock(self, res):
         if len(res) >= 2:
@@ -482,7 +490,7 @@ class StockAnalyzer:
         fn = res['-fn']
         with open(fn, 'wb') as f:
             if len(res) > 1:
-                self.auto_save = True
+                self.auto_save = res['-as']
                 self.save_name = res['-fn']
             pk.dump(self, f)
             print("Session saved to the file "+fn)
@@ -501,6 +509,8 @@ class StockAnalyzer:
                 self.cmd_show_help()
             elif cmd == 'save_session':
                 self.cmd_save_session(res)
+            elif cmd == 'tst':
+                print(res)
             elif cmd == 'exit':
                 if self.auto_save:
                     self.cmd_save_session({'-fn': self.save_name})
