@@ -1,4 +1,6 @@
 from stock import Stock, StockAnalyzer
+from strargparser import StrArgParser
+import pickle as pk
 from matplotlib import pyplot as plt
 import datetime
 import threading as threading
@@ -38,11 +40,53 @@ import threading as threading
 # Stock.plot_stochastic(k)
 
 # plt.show()
+par = StrArgParser("Main command parser")
+
+
+def add_commands():
+    par.add_command("exit", "Ends the program")
+
+    par.add_command("start_session", "Starts a new session")
+    par.get_command('start_session').add_compulsory_arguments('Session_name', '-sn', '--session_name', 'Session name')
+
+    par.add_command('load_session', "Loads a previously saved session")
+    par.get_command('load_session').add_compulsory_arguments('File_name', '-fn', '--file_name',
+                                                             'The name/address of the file from '
+                                                             'which the session is to be loaded')
+
+    par.add_command('help', "Lists all the commands of session management")
+
+
+def handle_init():
+    while True:
+        s = input(">> ").strip(' ')
+        (cmd, res) = par.decode_command(s)
+        if res is None:
+            continue
+        elif cmd == 'exit':
+            print('Exiting')
+            exit(0)
+        elif cmd == 'start_session':
+            ana = StockAnalyzer(res['-sn'])
+            ana.start_command_line()
+        elif cmd == 'load_session':
+            try:
+                with open(res['-fn'], 'rb') as f:
+                    ana = pk.load(f)
+                    print('Session loaded. Updating stock data...')
+                    ana.update_stock_details()
+                    print('Stock data updated. Starting session')
+                    ana.start_command_line()
+            except FileNotFoundError:
+                print('File not found')
+        elif cmd == 'help':
+            par.show_help()
 
 
 if __name__ == '__main__':
-    ana = StockAnalyzer()
-    ana.start_command_line()
+    add_commands()
+    handle_init()
+
 
 
 

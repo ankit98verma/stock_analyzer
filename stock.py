@@ -4,6 +4,7 @@ from datetime import datetime
 import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
+import pickle as pk
 
 _alpha = 0.2
 
@@ -391,11 +392,13 @@ class Stock:
 
 class StockAnalyzer:
 
-    def __init__(self):
+    def __init__(self, session_name):
+        self.session_name = session_name
+        self.input_string = "("+self.session_name+")>> "
         while True:
-            start_date = input(">> Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to quits}: ")
+            start_date = input(self.input_string+"Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to quits}: ")
             if start_date == 'exit':
-                print('Exiting')
+                print('Exiting '+self.session_name)
                 # exit(0)
                 break
             try:
@@ -404,6 +407,8 @@ class StockAnalyzer:
             except ValueError:
                 print("Wrong date")
 
+        self.auto_save = False
+        self.save_name = ""
         self.stocks = []
         self.start = start_date
         self.end = datetime.now()
@@ -412,14 +417,32 @@ class StockAnalyzer:
         self.parser = StrArgParser("Stock analyzer")
         self.add_commands()
 
+    def update_stock_details(self):
+        if self.end.date() != datetime.now().date():
+            self.end = datetime.now()
+            for s in self.stocks:
+                s.fill_hist_data(self.start, self.end)
+
     def add_commands(self):
         self.parser.add_command('add', "Command to add stocks for analysis")
-        self.parser.add.add_optional_arguments('stock_name', '-sn', "--stock_name", "The stock name")
-        self.parser.add.add_optional_arguments('tracker', '-tr', "--tracker", "The tracker of the stock")
+        self.parser.get_command('add').add_optional_arguments('stock_name', '-sn', "--stock_name", "The stock name")
+        self.parser.get_command('add').add_optional_arguments('tracker', '-tr', "--tracker", "The tracker of the stock")
 
         self.parser.add_command('list', "Lists all the stock added")
 
         self.parser.add_command('help', "Shows the details of all the commands")
+
+        self.parser.add_command('save_session', "Saves the current session to a file")
+        self.parser.get_command('save_session').add_compulsory_arguments('file_name', '-fn', '--file_name',
+                                                                         "The name/address of the "
+                                                                         "file where the session "
+                                                                         "is to be saved")
+        self.parser.get_command('save_session').add_optional_arguments('auto_save', '-as', '--auto_save',
+                                                                       "Sets the auto save true/false. By default "
+                                                                       "false. Only accept 'true' or 'false' "
+                                                                       "if any other value provided then command is "
+                                                                       "neglected")
+        self.parser.add_command('exit', 'Exits the session')
 
     def cmd_add_stock(self, res):
         if len(res) >= 2:
@@ -455,12 +478,20 @@ class StockAnalyzer:
     def cmd_show_help(self):
         self.parser.show_help()
 
+    def cmd_save_session(self, res):
+        fn = res['-fn']
+        with open(fn, 'wb') as f:
+            if len(res) > 1:
+                self.auto_save = True
+                self.save_name = res['-fn']
+            pk.dump(self, f)
+            print("Session saved to the file "+fn)
+
     def start_command_line(self):
-        s = (input(">>").strip(' '))
-        while s != "exit":
+        while True:
+            s = (input(self.input_string).strip(' '))
             (cmd, res) = self.parser.decode_command(s)
             if res is None:
-                s = (input(">> ").strip(' '))
                 continue
             if cmd == 'add':
                 self.cmd_add_stock(res)
@@ -468,8 +499,13 @@ class StockAnalyzer:
                 self.cmd_list_stock()
             elif cmd == 'help':
                 self.cmd_show_help()
-
-            s = (input(">> ").strip(' '))
+            elif cmd == 'save_session':
+                self.cmd_save_session(res)
+            elif cmd == 'exit':
+                if self.auto_save:
+                    self.cmd_save_session({'-fn': self.save_name})
+                    print('Auto-saving...')
+                break
 
     @staticmethod
     def __update_parameter__(stock, parameter):

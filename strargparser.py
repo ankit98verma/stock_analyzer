@@ -53,26 +53,29 @@ class Command:
 
         print(string)
 
-    def add_positional_arguments(self, position, short_form, long_form, description):
+    def add_positional_arguments(self, position, short_form, long_form, description, param_type=str):
         self.has_positional = True
         self.positional_arguments[position] = dict()
         self.positional_arguments[position]['sh'] = short_form
         self.positional_arguments[position]['lf'] = long_form
         self.positional_arguments[position]['des'] = description
+        self.positional_arguments[position]['type'] = param_type
 
-    def add_optional_arguments(self, name, short_form, long_form, description):
+    def add_optional_arguments(self, name, short_form, long_form, description, param_type=str):
         self.has_optional = True
         self.optional_arguments[name] = dict()
         self.optional_arguments[name]['sh'] = short_form
         self.optional_arguments[name]['lf'] = long_form
         self.optional_arguments[name]['des'] = description
+        self.optional_arguments[name]['type'] = param_type
 
-    def add_compulsory_arguments(self, name, short_form, long_form, description):
+    def add_compulsory_arguments(self, name, short_form, long_form, description, param_type=str):
         self.has_compulsory = True
         self.compulsory_arguments[name] = dict()
         self.compulsory_arguments[name]['sh'] = short_form
         self.compulsory_arguments[name]['lf'] = long_form
         self.compulsory_arguments[name]['des'] = description
+        self.compulsory_arguments[name]['type'] = param_type
 
     def get_short_list(self, get_dict):
         res = []
@@ -115,7 +118,7 @@ class Command:
                         if options[pos+1][0] == '-':
                             raise IndexError
                         else:
-                            res[v['sh']] = options[pos + 1]
+                            res[v['sh']] = v['type'](options[pos + 1])
                             options.remove(v[remove_text])
                             options.remove(options[pos])
                     except IndexError:
@@ -157,7 +160,7 @@ class Command:
                 if options[start+1][0] == '-':
                     raise IndexError
                 else:
-                    res[res_key] = options[start+1]
+                    res[res_key] = (options[start+1])
                     options.remove(options[start])
                     options.remove(options[start])
             except IndexError:
@@ -170,7 +173,7 @@ class Command:
                 return None
             i = 0
             for k, v in self.positional_arguments.items():
-                res[k] = options[0]
+                res[k] = v['type'](options[0])
                 i += 1
             print("Taking care of positional arguments")
 
@@ -188,11 +191,8 @@ class StrArgParser:
     def __repr__(self):
         return self.description
 
-    def __getattr__(self, name):
-        if name in self.commands:
-            return self.commands[name]
-        else:
-            return self.__getattribute__(name)
+    def get_command(self, name):
+        return self.commands[name]
 
     def add_command(self, command, description):
         c = Command(command, description)
@@ -215,4 +215,4 @@ class StrArgParser:
             return s[0], self.commands[s[0]].decode_options(s[1:])
         except KeyError:
             print("Command not found. Use help command for details on various commands")
-            return None
+            return None, None
