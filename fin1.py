@@ -81,7 +81,7 @@ def handle_init():
             except FileNotFoundError:
                 print('File not found')
         elif cmd == 'cmd_list':
-            par.show_cmd_list(is_verbose=(len(res) > 0))
+            par.show_cmd_list(res)
         elif cmd == 'help':
             par.show_help()
 

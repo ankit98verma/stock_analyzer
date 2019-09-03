@@ -393,6 +393,8 @@ class Stock:
 
 class StockAnalyzer:
 
+    __version__ = 0.1
+
     def __init__(self, session_name):
         self.session_name = session_name
         self.input_string = "("+self.session_name+")>> "
@@ -436,7 +438,7 @@ class StockAnalyzer:
         self.parser.get_command('add').add_optional_arguments('-sn', "--stock_name", "The stock name")
         self.parser.get_command('add').add_optional_arguments('-tr', "--tracker", "The tracker of the stock")
 
-        self.parser.add_command('list', "Lists all the stock added")
+        self.parser.add_command('ls_stocks', "Lists all the stock added")
 
         self.parser.add_command('help', "Shows the details of all the commands")
 
@@ -451,10 +453,18 @@ class StockAnalyzer:
                                                                        "if any other value provided then command is "
                                                                        "neglected", param_type=bool)
 
-        self.parser.add_command('ls_ses_params', 'List the session parameters')
-        self.parser.add_command('ch_ses_params', "Update session parameters", inf_positional=True)
+        self.parser.add_command('ls_params', 'List the session parameters')
+
+        self.parser.add_command('ch_params', "Update session parameters", inf_positional=True)
+
         self.parser.add_command('update_stocks', 'Updates the stock data', inf_positional=True)
+
         self.parser.add_command('exit', 'Exits the session')
+
+        self.parser.add_command("version", "Displays the version of the program")
+
+        self.parser.add_command('export_data', "Exports the raw data to the file. Use it to transition from one "
+                                               "version to another")
 
     def cmd_add_stock(self, res):
         if len(res) >= 2:
@@ -479,7 +489,7 @@ class StockAnalyzer:
         print(stock)
         print("Stock added")
 
-    def cmd_list_stock(self):
+    def cmd_ls_stock(self):
         if len(self.stocks) == 0:
             print("Empty")
         else:
@@ -498,7 +508,7 @@ class StockAnalyzer:
             pk.dump(self, f)
             print("Session saved to the file "+fn)
 
-    def cmd_show_params(self):
+    def cmd_ls_params(self):
         params = self.__dict__
         val = [type(i) for i in list(params.values())]
         i = 0
@@ -566,6 +576,14 @@ class StockAnalyzer:
                 print("Updating: "+self.stocks[v].get_name())
                 self.stocks[v].fill_hist_data(self.start, self.end)
 
+    def cmd_version(self):
+        print("Session: "+self.session_name+" Version: "+str(StockAnalyzer.__version__))
+
+    def cmd_exit(self):
+        if self.auto_save:
+            self.cmd_save_session({'-fn': self.save_name})
+            print('Auto-saving...')
+
     def start_command_line(self):
         while True:
             s = (input(self.input_string).strip(' '))
@@ -574,24 +592,26 @@ class StockAnalyzer:
                 continue
             if cmd == 'add':
                 self.cmd_add_stock(res)
-            elif cmd == 'list':
-                self.cmd_list_stock()
+            elif cmd == 'ls_stocks':
+                self.cmd_ls_stock()
             elif cmd == 'help':
                 self.cmd_show_help()
             elif cmd == 'save_session':
                 self.cmd_save_session(res)
             elif cmd == 'cmd_list':
-                self.parser.show_cmd_list(is_verbose=(len(res) > 0))
-            elif cmd == 'ls_ses_params':
-                self.cmd_show_params()
-            elif cmd == 'ch_ses_params':
+                self.parser.show_cmd_list(res)
+            elif cmd == 'ls_params':
+                self.cmd_ls_params()
+            elif cmd == 'ch_params':
                 self.cmd_ch_params(res)
             elif cmd == 'update_stocks':
                 self.cmd_update_stocks(res)
+            elif cmd == 'version':
+                self.cmd_version()
+            elif cmd == 'export_data':
+                pass
             elif cmd == 'exit':
-                if self.auto_save:
-                    self.cmd_save_session({'-fn': self.save_name})
-                    print('Auto-saving...')
+                self.cmd_exit()
                 break
 
     @staticmethod

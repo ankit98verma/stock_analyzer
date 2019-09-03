@@ -251,7 +251,8 @@ class StrArgParser:
         c = Command(command, description, inf_positional)
         self.commands[command] = c
 
-    def show_cmd_list(self, is_verbose=False):
+    def show_cmd_list(self, res):
+        is_verbose = len(res) > 0
         for k, v in self.commands.items():
             print("Command: " + k),
             if is_verbose:
