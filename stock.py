@@ -9,6 +9,9 @@ import pickle as pk
 
 _alpha = 0.2
 
+plt.ion()
+plt.show()
+
 
 class Stock:
 
@@ -69,7 +72,7 @@ class Stock:
         return self.tracker == ''
 
     def __iter__(self):
-        if self.iter_value < 0:
+        if self.iter_value > 0:
             i = 0
             while i < self.iter_value:
                 i += 1
@@ -87,30 +90,23 @@ class Stock:
         r = pd.DataFrame(r)
         return r
 
-    def get_data(self, parameter):
-        r = pd.DataFrame(self.hist_data[parameter])
-        r.columns = [self.tracker + "_" + parameter]
-        return r
-
     def get_rolling_data(self, parameter, window_sizes, win_type=None, func=np.mean, func_name='mean'):
-        parameter = self.tracker + "_" + parameter
         k = pd.DataFrame(self.hist_data[parameter])
         for w in window_sizes:
             k[func_name + "_" + str(w)] = k[parameter].rolling(window=w, win_type=win_type).apply(func, raw=False)
         return k
 
-    def get_bollinger_bonds_indicator(self, n, x):
-        mb = self.get_rolling_data('Close', [n])
-        std = self.get_rolling_data('Close', [n], func=np.std, func_name='std')
+    def get_bollinger_bonds_indicator(self, n=20, x=2):
+        mb = self.get_rolling_data(self.close, [n])
+        std = self.get_rolling_data(self.close, [n], func=np.std, func_name='std')
         mb['up_' + str(n)] = mb['mean_' + str(n)] + x * std['std_' + str(n)]
         mb['down_' + str(n)] = mb['mean_' + str(n)] - x * std['std_' + str(n)]
-        k1 = np.where(mb[self.tracker + "_Close"] >= mb['up_' + str(n)], -1, 0)
-        k2 = np.where(mb[self.tracker + "_Close"] <= mb['down_' + str(n)], 1, 0)
+        k1 = np.where(mb[self.close] >= mb['up_' + str(n)], -1, 0)
+        k2 = np.where(mb[self.close] <= mb['down_' + str(n)], 1, 0)
         mb['positions'] = k1 + k2
         return mb, ['-', 'b--', 'g--', 'r--']
 
-    @staticmethod
-    def plot_bollinger_bonds(bolli_data, n):
+    def plot_bollinger_bonds(self, bolli_data, n):
         fig, ax = plt.subplots(1, 1)
         ax2 = ax.twinx()
 
@@ -123,9 +119,10 @@ class Stock:
 
         ax.grid()
 
+        return fig
+
     def get_moving_average_indicator(self, win1, win2):
-        parameter = 'Close'
-        roll_data = self.get_rolling_data(parameter, [win1, win2])
+        roll_data = self.get_rolling_data(self.close, [win1, win2])
         if win1 < win2:
             roll_data['positions'] = np.where(roll_data['mean_' + str(win1)] > roll_data['mean_' + str(win2)], 1, -1)
         else:
@@ -147,23 +144,24 @@ class Stock:
         mov_data['positions'].plot(ax=ax)
         ax.grid()
 
+        return fig
+
     def get_ichimoku_kinko_hyo_indicator(self):
-        parameter = 'Close'
-        res = self.get_rolling_data(parameter, [9], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(parameter, [9], func=np.min, func_name='lows')
+        res = self.get_rolling_data(self.close, [9], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [9], func=np.min, func_name='lows')
         res['Tenkan_sen'] = (res['highs_9'] + lows['lows_9']) / 2
         res = res.drop('highs_9', axis=1)
 
-        highs = self.get_rolling_data(parameter, [26], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(parameter, [26], func=np.min, func_name='lows')
+        highs = self.get_rolling_data(self.close, [26], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [26], func=np.min, func_name='lows')
         res['Kijun_sen'] = (highs['highs_26'] + lows['lows_26']) / 2
 
         res['Chikou_Span'] = res[self.tracker + '_Close'].shift(-26)
 
         res['Senkou_Span_A'] = ((res['Kijun_sen'] + res['Tenkan_sen']) / 2).shift(26)
 
-        highs = self.get_rolling_data(parameter, [52], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(parameter, [52], func=np.min, func_name='lows')
+        highs = self.get_rolling_data(self.close, [52], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [52], func=np.min, func_name='lows')
         res['Senkou_Span_B'] = ((highs['highs_52'] + lows['lows_52']) / 2).shift(26)
 
         # TODO: Add position data
@@ -171,7 +169,8 @@ class Stock:
 
     @staticmethod
     def plot_ichimoku_kinko_hyo(p_data, style):
-        ax = p_data.plot(style=style)
+        fig, ax = plt.subplots(1, 1)
+        p_data.plot(style=style, ax=ax)
         ax.fill_between(p_data.index, p_data['Senkou_Span_A'], p_data['Senkou_Span_B'],
                         where=p_data['Senkou_Span_A'] >= p_data['Senkou_Span_B'],
                         facecolor='red', alpha=_alpha)
@@ -180,6 +179,8 @@ class Stock:
                         facecolor='green', alpha=_alpha)
         ax.yaxis.tick_right()
         ax.grid()
+
+        return fig
 
     def get_rsi_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
@@ -219,6 +220,8 @@ class Stock:
         ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('RSI')
 
+        return fig
+
     def get_macd_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
         ema_12 = res[self.close].ewm(com=12 - 1).mean()
@@ -247,6 +250,8 @@ class Stock:
         ax[0].bar(p_data.index, p_data['histogram'], label='MACD histogram', color='red', alpha=_alpha)
         ax[0].legend()
         ax[1].legend()
+
+        return fig
 
     def get_parabolic_sar_indicator(self):
         af_const = 0.04
@@ -300,12 +305,15 @@ class Stock:
 
     @staticmethod
     def plot_sar(p_data, style):
+        fig, ax = plt.subplots(1, 1)
         ax = p_data.plot(style=style)
         ax.yaxis.tick_right()
         ax.grid()
-        plt.title('SAR plot')
+        fig.title('SAR plot')
 
-        plt.legend()
+        ax.legend()
+
+        return fig
 
     def get_stochastic_indicator(self):
 
@@ -343,6 +351,8 @@ class Stock:
         ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
+
+        return fig
 
     def get_adx_indicator(self):
         high = self.hist_data[self.high]
@@ -390,15 +400,19 @@ class Stock:
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
 
+        return fig
+
 
 class StockAnalyzer:
-
     __version__ = 0.1
 
-    def __init__(self, session_name):
+    def write_file(self, line, end="\n"):
+        self.f_tmp.write(str(line)+end)
+
+    def __init__(self, session_name, start_date=''):
         self.session_name = session_name
-        self.input_string = "("+self.session_name+")>> "
-        self.default_ana_dur = timedelta(6*365/12)
+        self.input_string = "(" + self.session_name + ")>> "
+        self.default_ana_dur = timedelta(6 * 365 / 12)
         self.end = datetime.now()
         self.auto_save = True
         self.stocks = dict()
@@ -407,18 +421,24 @@ class StockAnalyzer:
         self.parser = StrArgParser("Stock analyzer")
         self.add_commands()
 
-        while True:
-            start_date = input(self.input_string+"Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to get "
-                                                 "default analysis duration}: ")
-            if start_date == 'exit':
-                start_date = self.end - self.default_ana_dur
-                print('Default analysis duration has been set')
-                break
-            try:
-                start_date = datetime.strptime(start_date, '%Y-%m-%d')
-                break
-            except ValueError:
-                print("Wrong date")
+        self.f_tmp = None
+
+        if start_date == 'exit':
+            start_date = self.end - self.default_ana_dur
+        else:
+            while True:
+                try:
+                    if start_date != '':
+                        start_date = datetime.strptime(start_date, '%Y-%m-%d')
+                        break
+                except ValueError:
+                    print("Wrong date")
+                start_date = input(self.input_string + "Enter start date of analysis (YYYY-MM-DD) {enter 'exit' to get "
+                                                       "default analysis duration}: ")
+                if start_date == 'exit':
+                    start_date = self.end - self.default_ana_dur
+                    print('Default analysis duration has been set')
+                    break
 
         self.start = start_date
         for s in self.stocks.values():
@@ -426,23 +446,26 @@ class StockAnalyzer:
 
         self.private_params = ['private_params', 'input_string', 'stocks', 'parser']
 
+    def load_dependent_values(self):
+        self.input_string = "(" + self.session_name + ")>> "
+
     def update_stock_details(self, force=False):
         if self.end.date() != datetime.now().date() or force:
             self.end = datetime.now()
             for s in self.stocks.values():
-                print("Updating: "+s.get_name())
+                print("Updating: " + s.get_name())
                 s.fill_hist_data(self.start, self.end)
 
     def add_commands(self):
-        self.parser.add_command('add', "Command to add stocks for analysis")
+        self.parser.add_command('add', "Command to add stocks for analysis", function=self.cmd_add_stock)
         self.parser.get_command('add').add_optional_arguments('-sn', "--stock_name", "The stock name")
         self.parser.get_command('add').add_optional_arguments('-tr', "--tracker", "The tracker of the stock")
 
-        self.parser.add_command('ls_stocks', "Lists all the stock added")
+        self.parser.add_command('ls_stocks', "Lists all the stock added", function=self.cmd_ls_stock)
 
-        self.parser.add_command('help', "Shows the details of all the commands")
+        self.parser.add_command('help', "Shows the details of all the commands", function=self.cmd_show_help)
 
-        self.parser.add_command('save_session', "Saves the current session to a file")
+        self.parser.add_command('save_session', "Saves the current session to a file", function=self.cmd_save_session)
         self.parser.get_command('save_session').add_compulsory_arguments('-fn', '--file_name',
                                                                          "The name/address of the "
                                                                          "file where the session "
@@ -453,72 +476,96 @@ class StockAnalyzer:
                                                                        "if any other value provided then command is "
                                                                        "neglected", param_type=bool)
 
-        self.parser.add_command('ls_params', 'List the session parameters')
+        self.parser.add_command('ls_params', 'List the session parameters', function=self.cmd_ls_params)
 
-        self.parser.add_command('ch_params', "Update session parameters", inf_positional=True)
+        self.parser.add_command('ch_params', "Update session parameters", inf_positional=True,
+                                function=self.cmd_ch_params)
 
-        self.parser.add_command('update_stocks', 'Updates the stock data', inf_positional=True)
+        self.parser.add_command('update_stocks', 'Updates the stock data', inf_positional=True,
+                                function=self.cmd_update_stocks)
 
-        self.parser.add_command('exit', 'Exits the session')
-
-        self.parser.add_command("version", "Displays the version of the program")
+        self.parser.add_command("version", "Displays the version of the program", self.cmd_version)
 
         self.parser.add_command('export_data', "Exports the raw data to the file. Use it to transition from one "
-                                               "version to another")
+                                               "version to another", function=self.cmd_export_data)
+        self.parser.get_command('export_data').add_compulsory_arguments('-fn', '--file_name', "The name/address of the "
+                                                                                              "file where the data "
+                                                                                              "is to be saved")
+        self.parser.add_command('import_data', "Imports the raw data from the file. Use it to transition from one "
+                                               "version to another", function=self.cmd_import_data)
+        self.parser.get_command('import_data').add_compulsory_arguments('-fn', '--file_name', "The name/address of the "
+                                                                                              "file from where the data"
+                                                                                              " is to be read")
 
-    def cmd_add_stock(self, res):
+        self.parser.add_command('bollinger', "Performs the bollinger analysis of the provided stock. Stock must be "
+                                             "added to the session before the analysis", function=self.cmd_bollinger)
+        self.parser.get_command('bollinger').add_positional_arguments(0, 's', 'stock', 'Stock name which was given w'
+                                                                                       'while adding the stock')
+        self.parser.get_command('bollinger').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                                    param_type=None)
+        self.parser.get_command('bollinger').add_optional_arguments('-w', '--window_size', 'The window size of moving '
+                                                                                           'average',
+                                                                    param_type=int)
+        self.parser.get_command('bollinger').add_optional_arguments('-x', '--std_dev_multiplier', 'The multiplier for '
+                                                                                                  'the standard '
+                                                                                                  'deviation',
+                                                                    param_type=int)
+
+        self.parser.add_command('exit', 'Exits the session', function=self.cmd_exit)
+
+    def cmd_add_stock(self, res, out_func=print):
         if len(res) >= 2:
             stock_name = res['-sn']
             stock_tracker = res['-tr']
         else:
-            stock_name = input(self.input_string+"Enter the stock name: ")
-            stock_tracker = input(self.input_string+"Enter the stock tracker: ")
+            stock_name = input(self.input_string + "Enter the stock name: ")
+            stock_tracker = input(self.input_string + "Enter the stock tracker: ")
 
         try:
-            print("Fetching stock details")
+            out_func("Fetching stock details")
             stock = Stock(stock_name, stock_tracker)
         except IndexError:
-            print("Tracker name is wrong. Exiting")
+            out_func("Tracker name is wrong. Exiting")
             return
         except:
-            print("Connection error. Exiting")
+            out_func("Connection error. Exiting")
             return ""
 
         stock.fill_hist_data(self.start, self.end)
         self.stocks[stock_name] = stock
-        print(stock)
-        print("Stock added")
+        out_func(stock)
+        out_func("Stock added")
 
-    def cmd_ls_stock(self):
+    def cmd_ls_stock(self, res, out_func=print):
         if len(self.stocks) == 0:
-            print("Empty")
+            out_func("Empty")
         else:
             for s in self.stocks.values():
-                print(s)
+                out_func(s)
 
-    def cmd_show_help(self):
+    def cmd_show_help(self, res, out_func=print):
         self.parser.show_help()
 
-    def cmd_save_session(self, res):
+    def cmd_save_session(self, res, out_func=print):
         fn = res['-fn']
         with open(fn, 'wb') as f:
             if len(res) > 1:
                 self.auto_save = res['-as']
                 self.save_name = res['-fn']
             pk.dump(self, f)
-            print("Session saved to the file "+fn)
+            out_func("Session saved to the file '" + fn + "'")
 
-    def cmd_ls_params(self):
-        params = self.__dict__
+    def cmd_ls_params(self, res, out_func=print):
+        params = self.__dict__.copy()
         val = [type(i) for i in list(params.values())]
         i = 0
         for k, v in params.items():
             if k not in self.private_params:
-                print(k + "\t" + str(val[i]).replace('<class ', "").replace(">", "") + "\t\t" + str(v))
+                out_func(k + "\t" + str(val[i]).replace('<class ', "").replace(">", "") + "\t\t" + str(v))
             i += 1
 
-    def cmd_ch_params(self, res):
-        param_dict = self.__dict__
+    def cmd_ch_params(self, res, out_func=print):
+        param_dict = self.__dict__.copy()
         state = 'param'
         param = ""
         is_skip = False
@@ -528,7 +575,7 @@ class StockAnalyzer:
                 continue
             if state == 'param':
                 if v in self.private_params:
-                    print("'"+v + "' is wrong parameter")
+                    out_func("'" + v + "' is wrong parameter")
                     is_skip = True
                     continue
                 param = v
@@ -556,70 +603,100 @@ class StockAnalyzer:
                             str(type(param_dict[param])).replace('<class ', "").replace(">", ""))
                         val = type(param_dict[param])(val)
                 except ValueError:
-                    print("Value for the parameter '" + param + "' is wrong"+val_error_string)
+                    out_func("Value for the parameter '" + param + "' is wrong" + val_error_string)
                     continue
                 except KeyError:
-                    print("Parameter '"+param+"' not found")
+                    out_func("Parameter '" + param + "' not found")
                     continue
                 finally:
                     state = 'param'
                 self.__setattr__(param, val)
             else:
-                print("Unexpected error has occurred")
+                out_func("Unexpected error has occurred")
                 break
+        self.load_dependent_values()
 
-    def cmd_update_stocks(self, res):
+    def cmd_update_stocks(self, res, out_func=print):
         if len(res) == 0:
             self.update_stock_details(force=True)
         else:
             for v in res.values():
-                print("Updating: "+self.stocks[v].get_name())
+                out_func("Updating: " + self.stocks[v].get_name())
                 self.stocks[v].fill_hist_data(self.start, self.end)
 
-    def cmd_version(self):
-        print("Session: "+self.session_name+" Version: "+str(StockAnalyzer.__version__))
+    def cmd_version(self, res, out_func=print):
+        out_func("Session: " + self.session_name + " Version: " + str(StockAnalyzer.__version__))
 
-    def cmd_exit(self):
+    def cmd_export_data(self, res, out_func=print):
+        ex = dict()
+        tmp = self.__dict__.copy()
+        for k in self.private_params:
+            tmp.pop(k)
+        ex['metadata'] = tmp
+        ex['data'] = dict()
+
+        for v in self.stocks.values():
+            ex['data'][v.get_name()] = dict()
+            ex['data'][v.get_name()]['name'] = v.get_name()
+            ex['data'][v.get_name()]['tracker'] = v.get_tracker()
+            ex['data'][v.get_name()]['hist_data'] = v.hist_data
+
+        with open(res['-fn'], 'wb') as f:
+            pk.dump(ex, f)
+            out_func("Data exported")
+
+    def cmd_import_data(self, res, out_func=print):
+        with open(res['-fn'], 'rb') as f:
+            ex = dict(pk.load(f))
+            for k, v in ex['metadata'].items():
+                self.__setattr__(k, v)
+            self.stocks = dict()
+            for sts in ex['data'].values():
+                tmp = Stock(sts['name'], sts['tracker'])
+                tmp.hist_data = sts['hist_data']
+                self.stocks[tmp.get_name()] = tmp
+            self.load_dependent_values()
+
+    def cmd_exit(self, res, out_func=print):
         if self.auto_save:
             self.cmd_save_session({'-fn': self.save_name})
-            print('Auto-saving...')
+            out_func('Auto-saving...')
+
+    def cmd_bollinger(self, res, out_func=print):
+        s = self.stocks[res['s']]
+
+        k_list = list(res.keys())
+        w = 20
+        x = 2
+        if '-w' in k_list:
+            w = res['-w']
+        if '-x' in k_list:
+            x = res['-x']
+        k, style = s.get_bollinger_bonds_indicator(w, x)
+
+        if '-p' in list(res.keys()):
+            fig = s.plot_bollinger_bonds(k, w)
 
     def start_command_line(self):
         while True:
-            s = (input(self.input_string).strip(' '))
-            (cmd, res) = self.parser.decode_command(s)
+            s = input(self.input_string).strip(' ')
+            (cmd, res, func) = self.parser.decode_command(s)
             if res is None:
                 continue
-            if cmd == 'add':
-                self.cmd_add_stock(res)
-            elif cmd == 'ls_stocks':
-                self.cmd_ls_stock()
-            elif cmd == 'help':
-                self.cmd_show_help()
-            elif cmd == 'save_session':
-                self.cmd_save_session(res)
-            elif cmd == 'cmd_list':
-                self.parser.show_cmd_list(res)
-            elif cmd == 'ls_params':
-                self.cmd_ls_params()
-            elif cmd == 'ch_params':
-                self.cmd_ch_params(res)
-            elif cmd == 'update_stocks':
-                self.cmd_update_stocks(res)
-            elif cmd == 'version':
-                self.cmd_version()
-            elif cmd == 'export_data':
-                pass
-            elif cmd == 'exit':
-                self.cmd_exit()
+            if '->' in list(res.keys()):
+                self.f_tmp = open(res['->'], 'w')
+                func(res, out_func=self.write_file)
+                self.f_tmp.close()
+                self.f_tmp = None
+            elif '->>' in list(res.keys()):
+                self.f_tmp = open(res['->>'], 'a')
+                func(res, out_func=self.write_file)
+                self.f_tmp.close()
+                self.f_tmp = None
+            else:
+                func(res)
+            if cmd == 'exit':
                 break
-
-    @staticmethod
-    def __update_parameter__(stock, parameter):
-        if stock.tracker in parameter:
-            return parameter
-        else:
-            return stock.tracker + "_" + parameter
 
     # def get_clts(self, parameter):
     #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)

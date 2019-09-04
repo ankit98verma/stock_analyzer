@@ -2,12 +2,13 @@
 
 class Command:
 
-    def __init__(self, command_name, description, inf_positional):
+    def __init__(self, command_name, description, inf_positional, function):
         self.description = description
         self.command_name = command_name
         self.positional_arguments = dict()
         self.compulsory_arguments = dict()
         self.optional_arguments = dict()
+        self.function = function
 
         self.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
 
@@ -237,9 +238,9 @@ class StrArgParser:
         self.commands = dict()
         self.description = description
 
-        self.add_command('cmd_list', 'Lists all the available command with usage')
-        self.get_command('cmd_list').add_optional_arguments('-v', '--verbose', "Give the output in detail",
-                                                            param_type=None)
+        self.add_command('ls_cmd', 'Lists all the available command with usage', function=self.cmd_ls_cmd)
+        self.get_command('ls_cmd').add_optional_arguments('-v', '--verbose', "Give the output in detail",
+                                                          param_type=None)
 
     def __repr__(self):
         return self.description
@@ -247,11 +248,13 @@ class StrArgParser:
     def get_command(self, name):
         return self.commands[name]
 
-    def add_command(self, command, description, inf_positional=False):
-        c = Command(command, description, inf_positional)
+    def add_command(self, command, description, inf_positional=False, function=None):
+        c = Command(command, description, inf_positional, function)
+        c.add_optional_arguments('->', '->', 'Overwirte the output to the file')
+        c.add_optional_arguments('->>', '->>', 'Append the output to the file')
         self.commands[command] = c
 
-    def show_cmd_list(self, res):
+    def cmd_ls_cmd(self, res):
         is_verbose = len(res) > 0
         for k, v in self.commands.items():
             print("Command: " + k),
@@ -273,7 +276,7 @@ class StrArgParser:
         except ValueError:
             pass
         try:
-            return s[0], self.commands[s[0]].decode_options(s[1:])
+            return s[0], self.commands[s[0]].decode_options(s[1:]), self.commands[s[0]].function
         except KeyError:
             print("Command not found. Use help command for details on various commands")
-            return None, None
+            return None, None, None

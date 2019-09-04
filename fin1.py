@@ -13,12 +13,12 @@ import threading as threading
 #
 # start_date = '2018-01-24'
 # end_date = datetime.datetime.now()
-#
-# ana = StockAnalyzer([icici_bank, reliance, infosys_stock, bajaj, yes_bank], start_date, end_date)
-#
-# k, style = yes_bank.get_bollinger_bonds_indicator(20, 2)
-# Stock.plot_bollinger_bonds(k, 20)
+# yes_bank.fill_hist_data(start_date, end_date)
 
+# k, style = yes_bank.get_bollinger_bonds_indicator(20, 2)
+# fig = yes_bank.plot_bollinger_bonds(k, 20)
+#
+# fig.show()
 # kk, style = infosys_stock.get_ichimoku_kinko_hyo_indicator()
 # Stock.plot_ichimoku_kinko_hyo(kk, style)
 
@@ -40,6 +40,8 @@ import threading as threading
 # Stock.plot_stochastic(k)
 
 # plt.show()
+
+
 par = StrArgParser("Main command parser")
 
 
@@ -48,28 +50,33 @@ def add_commands():
 
     par.add_command("start_session", "Starts a new session")
     par.get_command('start_session').add_compulsory_arguments('-sn', '--session_name', 'Session name')
+    par.get_command('start_session').add_optional_arguments('-sd', '--start_date', 'The start date in YYYY-MM-DD format'
+                                                                                   '. Enter "exit" to use default '
+                                                                                   'analysis duration')
 
     par.add_command('load_session', "Loads a previously saved session")
     par.get_command('load_session').add_compulsory_arguments('-fn', '--file_name',
                                                              'The name/address of the file from '
                                                              'which the session is to be loaded')
 
-    par.add_command('help', "Lists all the commands of session management")
+    par.add_command('help', "Gives the details of all the commands of session management")
 
 
 def handle_init():
     while True:
         s = input(">> ").strip(' ')
-        (cmd, res) = par.decode_command(s)
+        (cmd, res, func) = par.decode_command(s)
         if res is None:
             continue
         elif cmd == 'exit':
             print('Exiting')
             exit(0)
         elif cmd == 'start_session':
-            ana = StockAnalyzer(res['-sn'])
+            if '-sd' in list(res.keys()):
+                ana = StockAnalyzer(res['-sn'], res['-sd'])
+            else:
+                ana = StockAnalyzer(res['-sn'])
             ana.start_command_line()
-
         elif cmd == 'load_session':
             try:
                 with open(res['-fn'], 'rb') as f:
@@ -81,7 +88,7 @@ def handle_init():
             except FileNotFoundError:
                 print('File not found')
         elif cmd == 'cmd_list':
-            par.show_cmd_list(res)
+            par.cmd_ls_cmd(res)
         elif cmd == 'help':
             par.show_help()
 
