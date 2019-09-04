@@ -10,8 +10,6 @@ class Command:
         self.optional_arguments = dict()
         self.function = function
 
-        self.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
-
         self.inf_positional = inf_positional
         self.has_positional = False
         self.has_optional = True
@@ -35,7 +33,7 @@ class Command:
 
         return string
 
-    def show_help(self):
+    def show_help(self, out_func=print):
         string = self.__repr__()
         string += "\n\n"
         string += self.description + "\n"
@@ -59,7 +57,7 @@ class Command:
                     'lf'] + "\t" + v['des'] + "\n"
         if self.inf_positional:
             string += "Infinite positional parameters\n"
-        print(string)
+        out_func(string)
 
     def add_positional_arguments(self, position, short_form, long_form, description, param_type=str):
         self.has_positional = True
@@ -99,11 +97,8 @@ class Command:
 
     def decode_options(self, options):
         res = dict()
-        if '-h' in options or '--help' in options:
-            self.show_help()
-            return None
 
-        if self.has_compulsory:
+        if self.has_compulsory and ('-h' not in options and '--help' not in options):
             for v in self.compulsory_arguments.values():
                 try:
                     pos = options.index(v['sh'])
@@ -200,7 +195,7 @@ class Command:
                 print("Wrong value is given for option " + self.optional_arguments[res_key]['sh'])
                 return None
 
-        if self.has_positional:
+        if self.has_positional and ('-h' not in options and '--help' not in options):
             if len(options) < len(self.positional_arguments):
                 print("All positional arguments are not found")
                 return None
@@ -221,7 +216,7 @@ class Command:
                     print("Wrong value is given for the position "+str(k))
                     return None
 
-        if self.inf_positional:
+        if self.inf_positional and ('-h' not in options and '--help' not in options):
             i = 1
             for v in options:
                 res['inf'+str(i)] = v
@@ -234,8 +229,12 @@ class Command:
 
 class StrArgParser:
 
+    def write_file(self, line, end="\n"):
+        self.f_tmp.write(str(line)+end)
+
     def __init__(self, description=""):
         self.commands = dict()
+        self.f_tmp = None
         self.description = description
 
         self.add_command('ls_cmd', 'Lists all the available command with usage', function=self.cmd_ls_cmd)
@@ -250,23 +249,24 @@ class StrArgParser:
 
     def add_command(self, command, description, inf_positional=False, function=None):
         c = Command(command, description, inf_positional, function)
+        c.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
         c.add_optional_arguments('->', '->', 'Overwirte the output to the file')
         c.add_optional_arguments('->>', '->>', 'Append the output to the file')
         self.commands[command] = c
 
-    def cmd_ls_cmd(self, res):
+    def cmd_ls_cmd(self, res, out_func=print):
         is_verbose = len(res) > 0
         for k, v in self.commands.items():
-            print("Command: " + k),
+            out_func("Command: " + k),
             if is_verbose:
-                print(v)
-                print("\n"+v.description+"\n\n\t\t---x---\n")
+                out_func(v)
+                out_func("\n"+v.description+"\n\n\t\t---x---\n")
 
-    def show_help(self):
+    def show_help(self, res, out_func=print):
         for k, v in self.commands.items():
-            print("Command "+k)
-            v.show_help()
-            print("\t\t----x----\n")
+            out_func("Command "+k)
+            v.show_help(out_func=out_func)
+            out_func("\t\t----x----\n")
 
     def decode_command(self, s):
         s = s.strip(' ')
@@ -276,7 +276,23 @@ class StrArgParser:
         except ValueError:
             pass
         try:
-            return s[0], self.commands[s[0]].decode_options(s[1:]), self.commands[s[0]].function
+            res = self.commands[s[0]].decode_options(s[1:])
+            out_func = print
+
+            ls_key = list(res.keys())
+            if '->' in ls_key or '->>' in ls_key:
+                if '->' in ls_key:
+                    self.f_tmp = open(res['->'], 'w')
+                else:
+                    self.f_tmp = open(res['->>'], 'a')
+                out_func = self.write_file
+            if '-h' in ls_key:
+                self.commands[s[0]].show_help(out_func=out_func)
+                self.f_tmp.close()
+                self.f_tmp = None
+                return None, None, None, None
+
+            return s[0], res, self.commands[s[0]].function, out_func
         except KeyError:
             print("Command not found. Use help command for details on various commands")
-            return None, None, None
+            return None, None, None, None

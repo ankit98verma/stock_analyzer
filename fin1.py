@@ -64,8 +64,9 @@ def add_commands():
 
 def handle_init():
     while True:
+        # TODO: Implement out_func here
         s = input(">> ").strip(' ')
-        (cmd, res, func) = par.decode_command(s)
+        (cmd, res, func, out_func) = par.decode_command(s)
         if res is None:
             continue
         elif cmd == 'exit':
@@ -90,7 +91,7 @@ def handle_init():
         elif cmd == 'cmd_list':
             par.cmd_ls_cmd(res)
         elif cmd == 'help':
-            par.show_help()
+            par.show_help(res)
 
 
 if __name__ == '__main__':

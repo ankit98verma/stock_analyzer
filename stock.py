@@ -403,9 +403,6 @@ class Stock:
 class StockAnalyzer:
     __version__ = 0.1
 
-    def write_file(self, line, end="\n"):
-        self.f_tmp.write(str(line)+end)
-
     def __init__(self, session_name, start_date=''):
         self.session_name = session_name
         self.input_string = "(" + self.session_name + ")>> "
@@ -418,7 +415,6 @@ class StockAnalyzer:
         self.parser = StrArgParser("Stock analyzer")
         self.add_commands()
 
-        self.f_tmp = None
         self.cmd_line_cont = True
 
         if start_date == 'exit':
@@ -504,9 +500,9 @@ class StockAnalyzer:
         self.parser.get_command('bollinger').add_optional_arguments('-w', '--window_size', 'The window size of moving '
                                                                                            'average',
                                                                     param_type=int)
-        self.parser.add_command('script', "Runs the script.", function=self.cmd_script)
-        self.parser.get_command('script').add_compulsory_arguments('-fn', '--file_name', "The script file which is to "
-                                                                                         "be executed",)
+        self.parser.add_command('start_script', "Runs the script.", function=self.cmd_start_script)
+        self.parser.get_command('start_script').add_compulsory_arguments('-fn', '--file_name',
+                                                                         "The script file which is to be executed",)
         self.parser.get_command('bollinger').add_optional_arguments('-x', '--std_dev_multiplier', 'The multiplier for '
                                                                                                   'the standard '
                                                                                                   'deviation',
@@ -545,16 +541,20 @@ class StockAnalyzer:
                 out_func(s)
 
     def cmd_show_help(self, res, out_func=print):
-        self.parser.show_help()
+        self.parser.show_help(res, out_func=out_func)
 
     def cmd_save_session(self, res, out_func=print):
         fn = res['-fn']
+        if self.parser.f_tmp is not None:
+            self.parser.f_tmp.close()
+            self.parser.f_tmp = None
+
         with open(fn, 'wb') as f:
             if len(res) > 1:
                 self.auto_save = res['-as']
                 self.save_name = res['-fn']
             pk.dump(self, f)
-            out_func("Session saved to the file '" + fn + "'")
+            print("Session saved to the file '" + fn + "'")
 
     def cmd_ls_params(self, res, out_func=print):
         params = self.__dict__.copy()
@@ -661,9 +661,9 @@ class StockAnalyzer:
     def cmd_exit(self, res, out_func=print):
         if self.auto_save:
             self.cmd_save_session({'-fn': self.save_name})
-            out_func('Auto-saving...')
+            print('Auto-saving...')
 
-    def cmd_script(self, res, out_func=print):
+    def cmd_start_script(self, res, out_func=print):
         with open(res['-fn'], 'r') as f:
             for line in f:
                 line = line.strip(' ')
@@ -696,24 +696,18 @@ class StockAnalyzer:
             self.cmd_line_cont = self.execute_command(s)
 
     def execute_command(self, s):
-        (cmd, res, func) = self.parser.decode_command(s)
+        (cmd, res, func, out_func) = self.parser.decode_command(s)
         if res is None:
             return True
-        if '->' in list(res.keys()):
-            self.f_tmp = open(res['->'], 'w')
-            func(res, out_func=self.write_file)
-            self.f_tmp.close()
-            self.f_tmp = None
-        elif '->>' in list(res.keys()):
-            self.f_tmp = open(res['->>'], 'a')
-            func(res, out_func=self.write_file)
-            self.f_tmp.close()
-            self.f_tmp = None
-        else:
-            func(res)
+        func(res, out_func=out_func)
+        ls_key = list(res.keys())
+        if ('->' in ls_key or '->>' in ls_key) and self.parser.f_tmp is not None:
+            self.parser.f_tmp.close()
+            self.parser.f_tmp = None
+
         if cmd == 'exit':
             return False
-        if cmd == 'script':
+        if cmd == 'start_script':
             return self.cmd_line_cont
         return True
 
