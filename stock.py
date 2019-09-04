@@ -9,9 +9,6 @@ import pickle as pk
 
 _alpha = 0.2
 
-plt.ion()
-plt.show()
-
 
 class Stock:
 
@@ -422,6 +419,7 @@ class StockAnalyzer:
         self.add_commands()
 
         self.f_tmp = None
+        self.cmd_line_cont = True
 
         if start_date == 'exit':
             start_date = self.end - self.default_ana_dur
@@ -444,7 +442,7 @@ class StockAnalyzer:
         for s in self.stocks.values():
             s.fill_hist_data(self.start, self.end)
 
-        self.private_params = ['private_params', 'input_string', 'stocks', 'parser']
+        self.private_params = ['private_params', 'input_string', 'stocks', 'parser', 'f_tmp', 'cmd_line_cont']
 
     def load_dependent_values(self):
         self.input_string = "(" + self.session_name + ")>> "
@@ -506,6 +504,9 @@ class StockAnalyzer:
         self.parser.get_command('bollinger').add_optional_arguments('-w', '--window_size', 'The window size of moving '
                                                                                            'average',
                                                                     param_type=int)
+        self.parser.add_command('script', "Runs the script.", function=self.cmd_script)
+        self.parser.get_command('script').add_compulsory_arguments('-fn', '--file_name', "The script file which is to "
+                                                                                         "be executed",)
         self.parser.get_command('bollinger').add_optional_arguments('-x', '--std_dev_multiplier', 'The multiplier for '
                                                                                                   'the standard '
                                                                                                   'deviation',
@@ -662,6 +663,17 @@ class StockAnalyzer:
             self.cmd_save_session({'-fn': self.save_name})
             out_func('Auto-saving...')
 
+    def cmd_script(self, res, out_func=print):
+        with open(res['-fn'], 'r') as f:
+            for line in f:
+                line = line.strip(' ')
+                line = line.strip('\t')
+                line = line.strip('\n')
+                line = line.replace('\t', ' ')
+                if line != '':
+                    print(self.input_string+line)
+                    self.cmd_line_cont = self.execute_command(line)
+
     def cmd_bollinger(self, res, out_func=print):
         s = self.stocks[res['s']]
 
@@ -676,27 +688,34 @@ class StockAnalyzer:
 
         if '-p' in list(res.keys()):
             fig = s.plot_bollinger_bonds(k, w)
+            plt.show()
 
     def start_command_line(self):
-        while True:
+        while self.cmd_line_cont:
             s = input(self.input_string).strip(' ')
-            (cmd, res, func) = self.parser.decode_command(s)
-            if res is None:
-                continue
-            if '->' in list(res.keys()):
-                self.f_tmp = open(res['->'], 'w')
-                func(res, out_func=self.write_file)
-                self.f_tmp.close()
-                self.f_tmp = None
-            elif '->>' in list(res.keys()):
-                self.f_tmp = open(res['->>'], 'a')
-                func(res, out_func=self.write_file)
-                self.f_tmp.close()
-                self.f_tmp = None
-            else:
-                func(res)
-            if cmd == 'exit':
-                break
+            self.cmd_line_cont = self.execute_command(s)
+
+    def execute_command(self, s):
+        (cmd, res, func) = self.parser.decode_command(s)
+        if res is None:
+            return True
+        if '->' in list(res.keys()):
+            self.f_tmp = open(res['->'], 'w')
+            func(res, out_func=self.write_file)
+            self.f_tmp.close()
+            self.f_tmp = None
+        elif '->>' in list(res.keys()):
+            self.f_tmp = open(res['->>'], 'a')
+            func(res, out_func=self.write_file)
+            self.f_tmp.close()
+            self.f_tmp = None
+        else:
+            func(res)
+        if cmd == 'exit':
+            return False
+        if cmd == 'script':
+            return self.cmd_line_cont
+        return True
 
     # def get_clts(self, parameter):
     #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
