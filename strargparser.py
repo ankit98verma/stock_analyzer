@@ -99,8 +99,54 @@ class Command:
         res = dict()
 
         is_no_help = ('-h' not in options and '--help' not in options)
-        
-        if self.has_compulsory and is_no_help:
+
+        for v in self.optional_arguments.values():
+            try:
+                pos = options.index(v['sh'])
+                if options.count(v['sh']) > 1 or options.count(v['lf']) > 0:
+                    print('Duplicate options found for ' + v['sh'])
+                    return None
+                remove_text = 'sh'
+            except ValueError:
+                try:
+                    pos = options.index(v['lf'])
+                    if options.count(v['lf']) > 1 or options.count(v['sh']) > 0:
+                        print('Duplicate options found' + v['sh'])
+                        return None
+                    remove_text = 'lf'
+                except ValueError:
+                    continue
+            if v['type'] is None:
+                res[v['sh']] = None
+                options.remove(v[remove_text])
+                continue
+            try:
+                if options[pos + 1][0] == '-':
+                    raise IndexError
+                else:
+                    if v['type'] == bool:
+                        if options[pos + 1] == 'true':
+                            val = True
+                        elif options[pos + 1] == 'false':
+                            val = False
+                        else:
+                            raise ValueError
+                    else:
+                        val = v['type'](options[pos + 1])
+                    res[v['sh']] = val
+                    options.remove(v[remove_text])
+                    options.remove(options[pos])
+            except IndexError:
+                print("No value is given for option " + v['sh'])
+                return None
+            except ValueError:
+                print("Wrong value is given for option " + v['sh'])
+                return None
+
+        if '-h' in list(res.keys()):
+            return res
+
+        if self.has_compulsory:
             for v in self.compulsory_arguments.values():
                 try:
                     pos = options.index(v['sh'])
@@ -118,7 +164,6 @@ class Command:
                     except ValueError:
                         print(v['sh']+" or "+v['lf'] + " not present in the options")
                         return None
-
                 try:
                     if options[pos+1][0] == '-':
                         raise IndexError
@@ -133,7 +178,6 @@ class Command:
                         else:
                             val = v['type'](options[pos + 1])
                         res[v['sh']] = val
-                        # res[v['sh']] = v['type'](options[pos + 1])
                         options.remove(v[remove_text])
                         options.remove(options[pos])
                 except IndexError:
@@ -142,58 +186,8 @@ class Command:
                 except ValueError:
                     print("Wrong value is given for option "+v['sh'])
                     return None
-
-        optional_short_list = self.get_short_list(self.optional_arguments)
-        optional_long_list = self.get_long_list(self.optional_arguments)
-        while self.has_optional and len(options):
-            start = -1
-            for k in options:
-                if k[0] == '-':
-                    start = options.index(k)
-                    break
-            if start == -1:
-                break
-
-            if options.count(options[start]) > 1:
-                print("Duplicate options found"+options[start])
-                return None
-
-            if options[start] in optional_short_list:
-                res_key = options[start]
-            elif options[start] in optional_long_list:
-                index = optional_long_list.index(options[start])
-                res_key = optional_short_list[index]
-            else:
-                print("Unknown argument "+options[start])
-                return None
-            if self.optional_arguments[res_key]['type'] is None:
-                res[res_key] = None
-                options.remove(options[start])
-                continue
-            try:
-                if options[start+1][0] == '-':
-                    raise IndexError
-                else:
-                    if self.optional_arguments[res_key]['type'] == bool:
-                        if options[start+1] == 'true':
-                            val = True
-                        elif options[start+1] == 'false':
-                            val = False
-                        else:
-                            raise ValueError
-                    else:
-                        val = self.optional_arguments[res_key]['type']((options[start+1]))
-                    res[res_key] = val
-                    options.remove(options[start])
-                    options.remove(options[start])
-            except IndexError:
-                print("No value is given for option "+options[start])
-                return None
-            except ValueError:
-                print("Wrong value is given for option " + self.optional_arguments[res_key]['sh'])
-                return None
-
-        if self.has_positional and is_no_help:
+                
+        if self.has_positional:
             if len(options) < len(self.positional_arguments):
                 print("All positional arguments are not found")
                 return None
@@ -214,7 +208,7 @@ class Command:
                     print("Wrong value is given for the position "+str(k))
                     return None
 
-        if self.inf_positional and is_no_help:
+        if self.inf_positional:
             i = 1
             for v in options:
                 res['inf'+str(i)] = v
@@ -248,8 +242,8 @@ class StrArgParser:
     def add_command(self, command, description, inf_positional=False, function=None):
         c = Command(command, description, inf_positional, function)
         c.add_optional_arguments('-h', '--help', 'Gives the details of the command', param_type=None)
-        c.add_optional_arguments('->', '->', 'Overwirte the output to the file')
-        c.add_optional_arguments('->>', '->>', 'Append the output to the file')
+        c.add_optional_arguments('->', '->_route', 'Overwrite the output to the file')
+        c.add_optional_arguments('->>', '->>_route', 'Append the output to the file')
         self.commands[command] = c
 
     def cmd_ls_cmd(self, res, out_func=print):

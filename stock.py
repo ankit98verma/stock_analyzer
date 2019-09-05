@@ -700,8 +700,7 @@ class StockAnalyzer:
         if res is None:
             return True
         func(res, out_func=out_func)
-        ls_key = list(res.keys())
-        if ('->' in ls_key or '->>' in ls_key) and self.parser.f_tmp is not None:
+        if self.parser.f_tmp is not None:
             self.parser.f_tmp.close()
             self.parser.f_tmp = None
 

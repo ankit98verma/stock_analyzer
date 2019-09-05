@@ -85,13 +85,21 @@ def handle_init():
                     out_func('Session loaded. Updating stock data...')
                     ana.update_stock_details(out_func=out_func)
                     out_func('Stock data updated. Starting session')
+                    if par.f_tmp is not None:
+                        par.f_tmp.close()
+                        par.f_tmp = None
                     ana.start_command_line()
             except FileNotFoundError:
                 out_func('File not found')
-        elif cmd == 'cmd_list':
+        elif cmd == 'ls_cmd':
             par.cmd_ls_cmd(res, out_func=out_func)
+
         elif cmd == 'help':
             par.show_help(res, out_func=out_func)
+
+        if par.f_tmp is not None:
+            par.f_tmp.close()
+            par.f_tmp = None
 
 
 if __name__ == '__main__':
