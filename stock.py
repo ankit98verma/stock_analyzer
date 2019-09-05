@@ -443,11 +443,11 @@ class StockAnalyzer:
     def load_dependent_values(self):
         self.input_string = "(" + self.session_name + ")>> "
 
-    def update_stock_details(self, force=False):
+    def update_stock_details(self, force=False, out_func=print):
         if self.end.date() != datetime.now().date() or force:
             self.end = datetime.now()
             for s in self.stocks.values():
-                print("Updating: " + s.get_name())
+                out_func("Updating: " + s.get_name())
                 s.fill_hist_data(self.start, self.end)
 
     def add_commands(self):
@@ -619,7 +619,7 @@ class StockAnalyzer:
 
     def cmd_update_stocks(self, res, out_func=print):
         if len(res) == 0:
-            self.update_stock_details(force=True)
+            self.update_stock_details(force=True, out_func=out_func)
         else:
             for v in res.values():
                 out_func("Updating: " + self.stocks[v].get_name())

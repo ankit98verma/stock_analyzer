@@ -82,16 +82,16 @@ def handle_init():
             try:
                 with open(res['-fn'], 'rb') as f:
                     ana = pk.load(f)
-                    print('Session loaded. Updating stock data...')
-                    ana.update_stock_details()
-                    print('Stock data updated. Starting session')
+                    out_func('Session loaded. Updating stock data...')
+                    ana.update_stock_details(out_func=out_func)
+                    out_func('Stock data updated. Starting session')
                     ana.start_command_line()
             except FileNotFoundError:
-                print('File not found')
+                out_func('File not found')
         elif cmd == 'cmd_list':
-            par.cmd_ls_cmd(res)
+            par.cmd_ls_cmd(res, out_func=out_func)
         elif cmd == 'help':
-            par.show_help(res)
+            par.show_help(res, out_func=out_func)
 
 
 if __name__ == '__main__':

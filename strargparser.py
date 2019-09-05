@@ -98,7 +98,9 @@ class Command:
     def decode_options(self, options):
         res = dict()
 
-        if self.has_compulsory and ('-h' not in options and '--help' not in options):
+        is_no_help = ('-h' not in options and '--help' not in options)
+        
+        if self.has_compulsory and is_no_help:
             for v in self.compulsory_arguments.values():
                 try:
                     pos = options.index(v['sh'])
@@ -124,7 +126,7 @@ class Command:
                         if v['type'] == bool:
                             if options[pos + 1] == 'true':
                                 val = True
-                            elif options[pos+ 1] == 'false':
+                            elif options[pos + 1] == 'false':
                                 val = False
                             else:
                                 raise ValueError
@@ -140,10 +142,6 @@ class Command:
                 except ValueError:
                     print("Wrong value is given for option "+v['sh'])
                     return None
-
-        if not self.has_optional and not self.has_positional and len(options):
-            print("some options, not required, have been ignored")
-            return res
 
         optional_short_list = self.get_short_list(self.optional_arguments)
         optional_long_list = self.get_long_list(self.optional_arguments)
@@ -195,7 +193,7 @@ class Command:
                 print("Wrong value is given for option " + self.optional_arguments[res_key]['sh'])
                 return None
 
-        if self.has_positional and ('-h' not in options and '--help' not in options):
+        if self.has_positional and is_no_help:
             if len(options) < len(self.positional_arguments):
                 print("All positional arguments are not found")
                 return None
@@ -216,7 +214,7 @@ class Command:
                     print("Wrong value is given for the position "+str(k))
                     return None
 
-        if self.inf_positional and ('-h' not in options and '--help' not in options):
+        if self.inf_positional and is_no_help:
             i = 1
             for v in options:
                 res['inf'+str(i)] = v
@@ -279,6 +277,8 @@ class StrArgParser:
             res = self.commands[s[0]].decode_options(s[1:])
             out_func = print
 
+            if res is None:
+                return None, None, None, print
             ls_key = list(res.keys())
             if '->' in ls_key or '->>' in ls_key:
                 if '->' in ls_key:
@@ -288,11 +288,12 @@ class StrArgParser:
                 out_func = self.write_file
             if '-h' in ls_key:
                 self.commands[s[0]].show_help(out_func=out_func)
-                self.f_tmp.close()
-                self.f_tmp = None
+                if self.f_tmp is not None:
+                    self.f_tmp.close()
+                    self.f_tmp = None
                 return None, None, None, None
 
             return s[0], res, self.commands[s[0]].function, out_func
         except KeyError:
             print("Command not found. Use help command for details on various commands")
-            return None, None, None, None
+            return None, None, None, print
