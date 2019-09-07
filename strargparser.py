@@ -83,24 +83,9 @@ class Command:
         self.compulsory_arguments[short_form]['des'] = description
         self.compulsory_arguments[short_form]['type'] = param_type
 
-    def get_short_list(self, get_dict):
-        res = []
-        for v in get_dict.values():
-            res.append(v['sh'])
-        return res
-
-    def get_long_list(self, get_dict):
-        res = []
-        for v in get_dict.values():
-            res.append(v['lf'])
-        return res
-
-    def decode_options(self, options):
+    def decode_argument(self, options, vals, is_compulsory=False):
         res = dict()
-
-        is_no_help = ('-h' not in options and '--help' not in options)
-
-        for v in self.optional_arguments.values():
+        for v in vals:
             try:
                 pos = options.index(v['sh'])
                 if options.count(v['sh']) > 1 or options.count(v['lf']) > 0:
@@ -115,7 +100,11 @@ class Command:
                         return None
                     remove_text = 'lf'
                 except ValueError:
-                    continue
+                    if is_compulsory:
+                        print(v['sh'] + " or " + v['lf'] + " not present in the options")
+                        return None
+                    else:
+                        continue
             if v['type'] is None:
                 res[v['sh']] = None
                 options.remove(v[remove_text])
@@ -142,51 +131,22 @@ class Command:
             except ValueError:
                 print("Wrong value is given for option " + v['sh'])
                 return None
+        return res, options
+
+    def decode_options(self, options):
+
+        res, options = self.decode_argument(options, self.optional_arguments.values())
+        if res is None:
+            return None
 
         if '-h' in list(res.keys()):
             return res
 
-        if self.has_compulsory:
-            for v in self.compulsory_arguments.values():
-                try:
-                    pos = options.index(v['sh'])
-                    if options.count(v['sh']) > 1 or options.count(v['lf']) > 0:
-                        print('Duplicate options found for ' + v['sh'])
-                        return None
-                    remove_text = 'sh'
-                except ValueError:
-                    try:
-                        pos = options.index(v['lf'])
-                        if options.count(v['lf']) > 1 or options.count(v['sh']) > 0:
-                            print('Duplicate options found' + v['sh'])
-                            return None
-                        remove_text = 'lf'
-                    except ValueError:
-                        print(v['sh']+" or "+v['lf'] + " not present in the options")
-                        return None
-                try:
-                    if options[pos+1][0] == '-':
-                        raise IndexError
-                    else:
-                        if v['type'] == bool:
-                            if options[pos + 1] == 'true':
-                                val = True
-                            elif options[pos + 1] == 'false':
-                                val = False
-                            else:
-                                raise ValueError
-                        else:
-                            val = v['type'](options[pos + 1])
-                        res[v['sh']] = val
-                        options.remove(v[remove_text])
-                        options.remove(options[pos])
-                except IndexError:
-                    print("No value is given for option "+v['sh'])
-                    return None
-                except ValueError:
-                    print("Wrong value is given for option "+v['sh'])
-                    return None
-                
+        res_comp, options = self.decode_argument(options, self.compulsory_arguments.values(), is_compulsory=True)
+        if res_comp is None:
+            return None
+        res.update(res_comp)
+
         if self.has_positional:
             if len(options) < len(self.positional_arguments):
                 print("All positional arguments are not found")
