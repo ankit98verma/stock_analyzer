@@ -6,6 +6,12 @@ import numpy as np
 import pandas as pd
 from matplotlib import pyplot as plt
 import pickle as pk
+import inspect
+from socket import gaierror
+from requests.exceptions import ConnectionError
+from urllib3.exceptions import MaxRetryError, NewConnectionError
+
+import multiprocessing as mp
 
 _alpha = 0.2
 
@@ -103,7 +109,8 @@ class Stock:
         mb['positions'] = k1 + k2
         return mb, ['-', 'b--', 'g--', 'r--']
 
-    def plot_bollinger_bonds(self, bolli_data, n):
+    @staticmethod
+    def plot_bollinger_bonds(bolli_data, n):
         fig, ax = plt.subplots(1, 1)
         ax2 = ax.twinx()
 
@@ -115,10 +122,9 @@ class Stock:
         bolli_data['positions'].plot(style='r', ax=ax)
 
         ax.grid()
+        plt.show()
 
-        return fig
-
-    def get_moving_average_indicator(self, win1, win2):
+    def get_moving_average_indicator(self, win1=20, win2=100):
         roll_data = self.get_rolling_data(self.close, [win1, win2])
         if win1 < win2:
             roll_data['positions'] = np.where(roll_data['mean_' + str(win1)] > roll_data['mean_' + str(win2)], 1, -1)
@@ -141,7 +147,7 @@ class Stock:
         mov_data['positions'].plot(ax=ax)
         ax.grid()
 
-        return fig
+        plt.show()
 
     def get_ichimoku_kinko_hyo_indicator(self):
         res = self.get_rolling_data(self.close, [9], func=np.max, func_name='highs')
@@ -177,7 +183,7 @@ class Stock:
         ax.yaxis.tick_right()
         ax.grid()
 
-        return fig
+        plt.show()
 
     def get_rsi_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
@@ -217,7 +223,7 @@ class Stock:
         ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('RSI')
 
-        return fig
+        plt.show()
 
     def get_macd_indicator(self):
         res = pd.DataFrame(self.hist_data[self.close])
@@ -248,7 +254,7 @@ class Stock:
         ax[0].legend()
         ax[1].legend()
 
-        return fig
+        plt.show()
 
     def get_parabolic_sar_indicator(self):
         af_const = 0.04
@@ -310,7 +316,7 @@ class Stock:
 
         ax.legend()
 
-        return fig
+        plt.show()
 
     def get_stochastic_indicator(self):
 
@@ -349,7 +355,7 @@ class Stock:
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
 
-        return fig
+        plt.show()
 
     def get_adx_indicator(self):
         high = self.hist_data[self.high]
@@ -397,7 +403,7 @@ class Stock:
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
 
-        return fig
+        plt.show()
 
 
 class StockAnalyzer:
@@ -406,7 +412,7 @@ class StockAnalyzer:
     def __init__(self, session_name, start_date=''):
         self.session_name = session_name
         self.input_string = "(" + self.session_name + ")>> "
-        self.default_ana_dur = timedelta(6 * 365 / 12)
+        self.default_ana_dur = timedelta(365)
         self.end = datetime.now()
         self.auto_save = True
         self.stocks = dict()
@@ -438,7 +444,7 @@ class StockAnalyzer:
         for s in self.stocks.values():
             s.fill_hist_data(self.start, self.end)
 
-        self.private_params = ['private_params', 'input_string', 'stocks', 'parser', 'f_tmp', 'cmd_line_cont']
+        self.private_params = ['private_params', 'input_string', 'stocks', 'parser', 'cmd_line_cont']
 
     def load_dependent_values(self):
         self.input_string = "(" + self.session_name + ")>> "
@@ -454,19 +460,20 @@ class StockAnalyzer:
         self.parser.add_command('add', "Command to add stocks for analysis", function=self.cmd_add_stock)
         self.parser.get_command('add').add_optional_arguments('-sn', "--stock_name", "The stock name")
         self.parser.get_command('add').add_optional_arguments('-tr', "--tracker", "The tracker of the stock")
+        self.parser.get_command('add').add_optional_arguments('-sec', "--sector", "The sector of the stock")
 
         self.parser.add_command('ls_stocks', "Lists all the stock added", function=self.cmd_ls_stock)
 
         self.parser.add_command('help', "Shows the details of all the commands", function=self.cmd_show_help)
 
         self.parser.add_command('save_session', "Saves the current session to a file", function=self.cmd_save_session)
-        self.parser.get_command('save_session').add_compulsory_arguments('-fn', '--file_name',
-                                                                         "The name/address of the "
-                                                                         "file where the session "
-                                                                         "is to be saved")
+        self.parser.get_command('save_session').add_optional_arguments('-fn', '--file_name',
+                                                                       "The name/address of the "
+                                                                       "file where the session "
+                                                                       "is to be saved")
         self.parser.get_command('save_session').add_optional_arguments('-as', '--auto_save',
                                                                        "Sets the auto save true/false. By default "
-                                                                       "false. Only accept 'true' or 'false' "
+                                                                       "true. Only accept 'true' or 'false' "
                                                                        "if any other value provided then command is "
                                                                        "neglected", param_type=bool)
 
@@ -478,7 +485,7 @@ class StockAnalyzer:
         self.parser.add_command('update_stocks', 'Updates the stock data', inf_positional=True,
                                 function=self.cmd_update_stocks)
 
-        self.parser.add_command("version", "Displays the version of the program", self.cmd_version)
+        self.parser.add_command("version", "Displays the version of the program", function=self.cmd_version)
 
         self.parser.add_command('export_data', "Exports the raw data to the file. Use it to transition from one "
                                                "version to another", function=self.cmd_export_data)
@@ -493,38 +500,68 @@ class StockAnalyzer:
 
         self.parser.add_command('bollinger', "Performs the bollinger analysis of the provided stock. Stock must be "
                                              "added to the session before the analysis", function=self.cmd_bollinger)
-        self.parser.get_command('bollinger').add_positional_arguments(0, 's', 'stock', 'Stock name which was given w'
+        self.parser.get_command('bollinger').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
                                                                                        'while adding the stock')
         self.parser.get_command('bollinger').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
                                                                     param_type=None)
         self.parser.get_command('bollinger').add_optional_arguments('-w', '--window_size', 'The window size of moving '
                                                                                            'average',
                                                                     param_type=int)
-        self.parser.add_command('start_script', "Runs the script.", function=self.cmd_start_script)
-        self.parser.get_command('start_script').add_compulsory_arguments('-fn', '--file_name',
-                                                                         "The script file which is to be executed",)
         self.parser.get_command('bollinger').add_optional_arguments('-x', '--std_dev_multiplier', 'The multiplier for '
                                                                                                   'the standard '
                                                                                                   'deviation',
                                                                     param_type=int)
+        self.parser.get_command('bollinger').add_optional_arguments('-e', '--export', 'Export the bollinger data '
+                                                                                      ', in csv format, to the file '
+                                                                                      'whose path is provided')
+        self.parser.add_command('moving_average', "Calculates the moving averages of the close price and compare them",
+                                function=self.cmd_moving_average)
+        self.parser.get_command('moving_average').add_positional_arguments(0, 's', 'stock', 'Stock name which was given'
+                                                                                            ' while adding the stock')
+        self.parser.get_command('moving_average').add_optional_arguments('-p', '--plot',
+                                                                         'Show the plot of the analysis',
+                                                                         param_type=None)
+        self.parser.get_command('moving_average').add_optional_arguments('-w1', '--win1',
+                                                                         'The window size of the first window',
+                                                                         param_type=int)
+        self.parser.get_command('moving_average').add_optional_arguments('-w2', '--win2',
+                                                                         'The window size of the second window',
+                                                                         param_type=int)
+        self.parser.get_command('moving_average').add_optional_arguments('-e', '--export',
+                                                                         'Export the analysis data '
+                                                                         ', in csv format, to the file '
+                                                                         'whose path is provided')
+
+        self.parser.add_command('start_script', "Runs the script.", function=self.cmd_start_script)
+        self.parser.get_command('start_script').add_compulsory_arguments('-fn', '--file_name',
+                                                                         "The script file which is to be executed", )
 
         self.parser.add_command('exit', 'Exits the session', function=self.cmd_exit)
 
     def cmd_add_stock(self, res, out_func=print):
-        if len(res) >= 2:
+        k_list = list(res.keys())
+        if '-sn' in k_list:
             stock_name = res['-sn']
-            stock_tracker = res['-tr']
         else:
             stock_name = input(self.input_string + "Enter the stock name: ")
+
+        if '-tr' in k_list:
+            stock_tracker = res['-tr']
+        else:
             stock_tracker = input(self.input_string + "Enter the stock tracker: ")
+
+        if '-sec' in k_list:
+            stock_sector = res['-sec']
+        else:
+            stock_sector = "Null"
 
         try:
             out_func("Fetching stock details")
-            stock = Stock(stock_name, stock_tracker)
+            stock = Stock(stock_name, stock_tracker, sector=stock_sector)
         except IndexError:
             out_func("Tracker name is wrong. Exiting")
             return
-        except:
+        except (gaierror, NewConnectionError, MaxRetryError, ConnectionError):
             out_func("Connection error. Exiting")
             return ""
 
@@ -533,7 +570,7 @@ class StockAnalyzer:
         out_func(stock)
         out_func("Stock added")
 
-    def cmd_ls_stock(self, res, out_func=print):
+    def cmd_ls_stock(self, out_func=print):
         if len(self.stocks) == 0:
             out_func("Empty")
         else:
@@ -543,20 +580,24 @@ class StockAnalyzer:
     def cmd_show_help(self, res, out_func=print):
         self.parser.show_help(res, out_func=out_func)
 
-    def cmd_save_session(self, res, out_func=print):
-        fn = res['-fn']
+    def cmd_save_session(self, res):
+
         if self.parser.f_tmp is not None:
             self.parser.f_tmp.close()
             self.parser.f_tmp = None
 
+        if '-fn' in list(res.keys()):
+            fn = res['-fn']
+            self.save_name = res['-fn']
+        else:
+            fn = self.save_name
         with open(fn, 'wb') as f:
-            if len(res) > 1:
+            if '-as' in list(res.keys()):
                 self.auto_save = res['-as']
-                self.save_name = res['-fn']
             pk.dump(self, f)
             print("Session saved to the file '" + fn + "'")
 
-    def cmd_ls_params(self, res, out_func=print):
+    def cmd_ls_params(self, out_func=print):
         params = self.__dict__.copy()
         val = [type(i) for i in list(params.values())]
         i = 0
@@ -625,7 +666,7 @@ class StockAnalyzer:
                 out_func("Updating: " + self.stocks[v].get_name())
                 self.stocks[v].fill_hist_data(self.start, self.end)
 
-    def cmd_version(self, res, out_func=print):
+    def cmd_version(self, out_func=print):
         out_func("Session: " + self.session_name + " Version: " + str(StockAnalyzer.__version__))
 
     def cmd_export_data(self, res, out_func=print):
@@ -646,7 +687,7 @@ class StockAnalyzer:
             pk.dump(ex, f)
             out_func("Data exported")
 
-    def cmd_import_data(self, res, out_func=print):
+    def cmd_import_data(self, res):
         with open(res['-fn'], 'rb') as f:
             ex = dict(pk.load(f))
             for k, v in ex['metadata'].items():
@@ -658,23 +699,28 @@ class StockAnalyzer:
                 self.stocks[tmp.get_name()] = tmp
             self.load_dependent_values()
 
-    def cmd_exit(self, res, out_func=print):
+    def cmd_exit(self, res):
         if self.auto_save:
-            self.cmd_save_session({'-fn': self.save_name})
+            self.cmd_save_session(res)
             print('Auto-saving...')
 
     def cmd_start_script(self, res, out_func=print):
-        with open(res['-fn'], 'r') as f:
-            for line in f:
-                line = line.strip(' ')
-                line = line.strip('\t')
-                line = line.strip('\n')
-                line = line.replace('\t', ' ')
-                if line != '':
-                    print(self.input_string+line)
-                    self.cmd_line_cont = self.execute_command(line)
+        try:
+            with open(res['-fn'], 'r') as f:
+                for line in f:
+                    line = line.strip(' ')
+                    line = line.strip('\t')
+                    line = line.strip('\n')
+                    line = line.replace('\t', ' ')
+                    if line != '':
+                        print(self.input_string + line)
+                        self.cmd_line_cont = self.execute_command(line)
+        except FileNotFoundError:
+            out_func('The script file not found')
+        except UnicodeDecodeError:
+            out_func('The data in the file is corrupted')
 
-    def cmd_bollinger(self, res, out_func=print):
+    def cmd_bollinger(self, res):
         s = self.stocks[res['s']]
 
         k_list = list(res.keys())
@@ -684,11 +730,44 @@ class StockAnalyzer:
             w = res['-w']
         if '-x' in k_list:
             x = res['-x']
-        k, style = s.get_bollinger_bonds_indicator(w, x)
 
-        if '-p' in list(res.keys()):
-            fig = s.plot_bollinger_bonds(k, w)
-            plt.show()
+        k, style = s.get_bollinger_bonds_indicator(w, x)
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_bollinger_bonds, args=(k, w))
+            p.start()
+
+        if '-e' in k_list:
+            exp_fn = res['-e']
+            with open(exp_fn, 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_moving_average(self, res):
+        s = self.stocks[res['s']]
+        win1 = 20
+        win2 = 100
+        k_list = list(res.keys())
+        if '-w1' in k_list:
+            win1 = res['-w1']
+        if '-w2' in k_list:
+            win2 = res['-w2']
+
+        k, style = s.get_moving_average_indicator(win1, win2)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_moving_average, args=(k, win1, win2))
+            p.start()
+
+        if '-e' in k_list:
+            exp_fn = res['-e']
+            with open(exp_fn, 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    # TODO: Add ichimoku_kinko_hyo
+    # TODO: Add rsi
+    # TODO: Add macd
+    # TODO: Add parabolic_sar
+    # TODO: Add stochastic
+    # TODO: Add adx
 
     def start_command_line(self):
         while self.cmd_line_cont:
@@ -699,7 +778,14 @@ class StockAnalyzer:
         (cmd, res, func, out_func) = self.parser.decode_command(s)
         if res is None:
             return True
-        func(res, out_func=out_func)
+        param_list = list(inspect.signature(func).parameters.keys())
+        if 'res' in param_list and 'out_func' in param_list:
+            func(res, out_func=out_func)
+        elif 'res' in param_list:
+            func(res)
+        elif 'out_func' in param_list:
+            func(out_func=out_func)
+
         if self.parser.f_tmp is not None:
             self.parser.f_tmp.close()
             self.parser.f_tmp = None
@@ -709,24 +795,6 @@ class StockAnalyzer:
         if cmd == 'start_script':
             return self.cmd_line_cont
         return True
-
-    # def get_clts(self, parameter):
-    #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
-    #     result = pd.DataFrame(self.stocks[0].get_clt(parameter2))
-    #     if len(self.stocks) > 1:
-    #         for s in self.stocks[1:]:
-    #             parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
-    #             result = result.join(s.get_clt(parameter2))
-    #     return result
-
-    # def get_price(self, parameter):
-    #     parameter2 = StockAnalyzer.__update_parameter__(self.stocks[0], parameter)
-    #     result = pd.DataFrame(self.stocks[0].get_data(parameter2))
-    #     if len(self.stocks) > 1:
-    #         for s in self.stocks[1:]:
-    #             parameter2 = StockAnalyzer.__update_parameter__(s, parameter)
-    #             result = result.join(s.get_data(parameter2))
-    #     return result
 
     def resample_hist_data(self, sample_rate):
         for s in self.stocks.values():

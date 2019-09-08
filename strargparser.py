@@ -90,19 +90,19 @@ class Command:
                 pos = options.index(v['sh'])
                 if options.count(v['sh']) > 1 or options.count(v['lf']) > 0:
                     print('Duplicate options found for ' + v['sh'])
-                    return None
+                    return None, None
                 remove_text = 'sh'
             except ValueError:
                 try:
                     pos = options.index(v['lf'])
                     if options.count(v['lf']) > 1 or options.count(v['sh']) > 0:
                         print('Duplicate options found' + v['sh'])
-                        return None
+                        return None, None
                     remove_text = 'lf'
                 except ValueError:
                     if is_compulsory:
                         print(v['sh'] + " or " + v['lf'] + " not present in the options")
-                        return None
+                        return None, None
                     else:
                         continue
             if v['type'] is None:
@@ -127,10 +127,10 @@ class Command:
                     options.remove(options[pos])
             except IndexError:
                 print("No value is given for option " + v['sh'])
-                return None
+                return None, None
             except ValueError:
                 print("Wrong value is given for option " + v['sh'])
-                return None
+                return None, None
         return res, options
 
     def decode_options(self, options):

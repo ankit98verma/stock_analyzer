@@ -64,7 +64,6 @@ def add_commands():
 
 def handle_init():
     while True:
-        # TODO: Implement out_func here
         s = input(">> ").strip(' ')
         (cmd, res, func, out_func) = par.decode_command(s)
         if res is None:
