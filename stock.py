@@ -149,7 +149,7 @@ class Stock:
 
         plt.show()
 
-    def get_ichimoku_kinko_hyo_indicator(self):
+    def get_ichimoku_kinko_hyo_indicator(self, tp=9, kp=26, cp=-26, sp=26):
         res = self.get_rolling_data(self.close, [9], func=np.max, func_name='highs')
         lows = self.get_rolling_data(self.close, [9], func=np.min, func_name='lows')
         res['Tenkan_sen'] = (res['highs_9'] + lows['lows_9']) / 2
@@ -531,10 +531,37 @@ class StockAnalyzer:
                                                                          'Export the analysis data '
                                                                          ', in csv format, to the file '
                                                                          'whose path is provided')
+        self.parser.add_command('ichimoku', "Performs the Ichimoku kinko hyo analysis", function=self.cmd_ichimoku)
+        self.parser.get_command('ichimoku').add_optional_arguments('-p', '--plot',
+                                                                         'Show the plot of the analysis',
+                                                                         param_type=None)
+        self.parser.get_command('ichimoku').add_optional_arguments('-kp',   '--kijun_sen_period',
+                                                                            'The window size for the Kijun Sen line '
+                                                                            '(default 26)',
+                                                                            param_type=int)
+        self.parser.get_command('ichimoku').add_optional_arguments('-tp', '--tenkan_sen_period',
+                                                                   'The window size for the Tenkan Sen line '
+                                                                   '(default 9)',
+                                                                   param_type=int)
+        self.parser.get_command('ichimoku').add_optional_arguments('-cp', '--chikou_sen_period',
+                                                                   'The window size for the Chikou Sen line '
+                                                                   '(default 26)',
+                                                                   param_type=int)
+        self.parser.get_command('ichimoku').add_optional_arguments('-sp', '--senkou_sen_period',
+                                                                   'The window size for the Senkou Sen line '
+                                                                   '(default 26)',
+                                                                   param_type=int)
+        self.parser.get_command('ichimoku').add_optional_arguments('-e', '--export',
+                                                                         'Export the analysis data '
+                                                                         ', in csv format, to the file '
+                                                                         'whose path is provided')
 
         self.parser.add_command('start_script', "Runs the script.", function=self.cmd_start_script)
         self.parser.get_command('start_script').add_compulsory_arguments('-fn', '--file_name',
                                                                          "The script file which is to be executed", )
+        self.parser.get_command('start_script').add_optional_arguments('-v', '--verbose',
+                                                                       'Prints out the commands being executed from '
+                                                                       'the script', param_type=None)
 
         self.parser.add_command('exit', 'Exits the session', function=self.cmd_exit)
 
@@ -713,7 +740,8 @@ class StockAnalyzer:
                     line = line.strip('\n')
                     line = line.replace('\t', ' ')
                     if line != '':
-                        print(self.input_string + line)
+                        if '-v' in res:
+                            out_func(self.input_string + line)
                         self.cmd_line_cont = self.execute_command(line)
         except FileNotFoundError:
             out_func('The script file not found')
@@ -737,8 +765,7 @@ class StockAnalyzer:
             p.start()
 
         if '-e' in k_list:
-            exp_fn = res['-e']
-            with open(exp_fn, 'w') as f:
+            with open(res['-e'], 'w') as f:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_moving_average(self, res):
@@ -758,9 +785,28 @@ class StockAnalyzer:
             p.start()
 
         if '-e' in k_list:
-            exp_fn = res['-e']
-            with open(exp_fn, 'w') as f:
+            with open(res['-e'], 'w') as f:
                 f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_ichimoku(self, res):
+        s = self.stocks[res['s']]
+        kp = 26
+        tp = 9
+        cp = -26
+        sp = 26
+        k_list = list(res.keys())
+        if '-kp' in k_list:
+            kp = res['-kp']
+        if '-tp' in k_list:
+            tp = res['-tp']
+        if '-cp' in k_list:
+            cp = res['-cp']
+        if '-sp' in k_list:
+            sp = res['-sp']
+
+
+
+    #     get_ichimoku_kinko_hyo_indicator
 
     # TODO: Add ichimoku_kinko_hyo
     # TODO: Add rsi
