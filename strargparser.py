@@ -1,4 +1,13 @@
 
+class CommandNotExecuted(Exception):
+
+    def __init__(self, cmd_name):
+        super().__init__(cmd_name+" not executed")
+        self.cmd_name = cmd_name
+
+    def __repr__(self):
+        return "'"+self.cmd_name+"' command is not executed"
+
 
 class Command:
 

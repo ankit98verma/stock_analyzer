@@ -1,4 +1,4 @@
-from strargparser import StrArgParser
+from strargparser import StrArgParser, CommandNotExecuted
 import nsepy as nse
 from datetime import datetime
 from datetime import timedelta
@@ -49,11 +49,11 @@ class Stock:
         return tmp
 
     def get_current_price(self):
-        try:
-            current_quote = nse.get_quote(self.tracker)
-            self.current_price = current_quote['lastPrice']
-        except (ConnectionError, MaxRetryError, NewConnectionError, gaierror):
-            self.current_price = -1
+        # try:
+        current_quote = nse.get_quote(self.tracker)
+        self.current_price = current_quote['lastPrice']
+        # except (ConnectionError, MaxRetryError, NewConnectionError, gaierror):
+        #     self.current_price = -1
         return self.current_price
 
     def get_tracker(self):
@@ -405,7 +405,7 @@ class Stock:
 
 
 class StockAnalyzer:
-    __version__ = "1.O"
+    __version__ = "1.1"
 
     def __init__(self, session_name, start_date=''):
         self.session_name = session_name
@@ -667,10 +667,11 @@ class StockAnalyzer:
             stock = Stock(stock_name, stock_tracker, sector=stock_sector)
         except IndexError:
             out_func("Tracker name is wrong. Exiting")
-            return
+            raise CommandNotExecuted('add')
+
         except (gaierror, NewConnectionError, MaxRetryError, ConnectionError):
             out_func("Connection error. Exiting")
-            return ""
+            raise CommandNotExecuted('add')
 
         stock.fill_hist_data(self.start, self.end)
         self.stocks[stock_name] = stock
@@ -730,7 +731,6 @@ class StockAnalyzer:
                 param = v
                 state = 'value'
             elif state == 'value':
-                val = v
                 val_error_string = ""
                 try:
                     if type(param_dict[param]) is datetime:
@@ -771,6 +771,7 @@ class StockAnalyzer:
         else:
             for v in res.values():
                 out_func("Updating: " + self.stocks[v].get_name())
+                # TODO: Handle the possible connection etc. error here
                 self.stocks[v].fill_hist_data(self.start, self.end)
 
     def cmd_version(self, out_func=print):
@@ -795,16 +796,20 @@ class StockAnalyzer:
             out_func("Data exported")
 
     def cmd_import_data(self, res):
-        with open(res['-fn'], 'rb') as f:
-            ex = dict(pk.load(f))
-            for k, v in ex['metadata'].items():
-                self.__setattr__(k, v)
-            self.stocks = dict()
-            for sts in ex['data'].values():
-                tmp = Stock(sts['name'], sts['tracker'])
-                tmp.hist_data = sts['hist_data']
-                self.stocks[tmp.get_name()] = tmp
-            self.load_dependent_values()
+        try:
+            with open(res['-fn'], 'rb') as f:
+                ex = dict(pk.load(f))
+                for k, v in ex['metadata'].items():
+                    self.__setattr__(k, v)
+                self.stocks = dict()
+                for sts in ex['data'].values():
+                    tmp = Stock(sts['name'], sts['tracker'])
+                    tmp.hist_data = sts['hist_data']
+                    self.stocks[tmp.get_name()] = tmp
+                self.load_dependent_values()
+        except FileNotFoundError:
+            print("The data file not found")
+            raise CommandNotExecuted('import_data')
 
     def cmd_exit(self, res):
         if self.auto_save:
@@ -822,11 +827,19 @@ class StockAnalyzer:
                     if line != '':
                         if '-v' in res:
                             out_func(self.input_string + line)
-                        self.cmd_line_cont = self.execute_command(line)
+                        try:
+                            self.cmd_line_cont = self.execute_command(line)
+                        except CommandNotExecuted as e:
+                            print(e)
+                            break
+                    if not self.cmd_line_cont:
+                        break
         except FileNotFoundError:
-            out_func('The script file not found')
+            out_func('The file not found')
+            raise CommandNotExecuted('start_script')
         except UnicodeDecodeError:
             out_func('The data in the file is corrupted')
+            raise CommandNotExecuted('start_script')
 
     def cmd_bollinger(self, res):
         s = self.stocks[res['s']]
@@ -925,7 +938,7 @@ class StockAnalyzer:
             p = res['-ap']
         if ws > wb:
             out_func("Illegal value of ws and wb")
-            return
+            raise CommandNotExecuted('macd')
 
         k, style = s.get_macd_indicator(wins=ws, winb=wb, p=p)
 
@@ -949,7 +962,7 @@ class StockAnalyzer:
 
         if afi > afl:
             out_func("Illegal value of afi and afl")
-            return
+            raise CommandNotExecuted('sar')
 
         k, style = s.get_parabolic_sar_indicator(af_const=afi, af_max_const=afl)
 
@@ -1002,7 +1015,10 @@ class StockAnalyzer:
     def start_command_line(self):
         while self.cmd_line_cont:
             s = input(self.input_string).strip(' ')
-            self.cmd_line_cont = self.execute_command(s)
+            try:
+                self.cmd_line_cont = self.execute_command(s)
+            except CommandNotExecuted as e:
+                print(e)
 
     def execute_command(self, s):
         (cmd, res, func, out_func) = self.parser.decode_command(s)
