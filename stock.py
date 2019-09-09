@@ -50,8 +50,11 @@ class Stock:
         return tmp
 
     def get_current_price(self):
-        current_quote = nse.get_quote(self.tracker)
-        self.current_price = current_quote['lastPrice']
+        try:
+            current_quote = nse.get_quote(self.tracker)
+            self.current_price = current_quote['lastPrice']
+        except (ConnectionError, MaxRetryError, NewConnectionError, gaierror):
+            self.current_price = -1
         return self.current_price
 
     def get_tracker(self):
@@ -150,22 +153,22 @@ class Stock:
         plt.show()
 
     def get_ichimoku_kinko_hyo_indicator(self, tp=9, kp=26, cp=-26, sp=26):
-        res = self.get_rolling_data(self.close, [9], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(self.close, [9], func=np.min, func_name='lows')
-        res['Tenkan_sen'] = (res['highs_9'] + lows['lows_9']) / 2
-        res = res.drop('highs_9', axis=1)
+        res = self.get_rolling_data(self.close, [tp], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [tp], func=np.min, func_name='lows')
+        res['Tenkan_sen'] = (res['highs_' + str(tp)] + lows['lows_' + str(tp)]) / 2
+        res = res.drop('highs_' + str(tp), axis=1)
 
-        highs = self.get_rolling_data(self.close, [26], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(self.close, [26], func=np.min, func_name='lows')
-        res['Kijun_sen'] = (highs['highs_26'] + lows['lows_26']) / 2
+        highs = self.get_rolling_data(self.close, [kp], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [kp], func=np.min, func_name='lows')
+        res['Kijun_sen'] = (highs['highs_' + str(kp)] + lows['lows_' + str(kp)]) / 2
 
-        res['Chikou_Span'] = res[self.tracker + '_Close'].shift(-26)
+        res['Chikou_Span'] = res[self.tracker + '_Close'].shift(cp)
 
-        res['Senkou_Span_A'] = ((res['Kijun_sen'] + res['Tenkan_sen']) / 2).shift(26)
+        res['Senkou_Span_A'] = ((res['Kijun_sen'] + res['Tenkan_sen']) / 2).shift(sp)
 
-        highs = self.get_rolling_data(self.close, [52], func=np.max, func_name='highs')
-        lows = self.get_rolling_data(self.close, [52], func=np.min, func_name='lows')
-        res['Senkou_Span_B'] = ((highs['highs_52'] + lows['lows_52']) / 2).shift(26)
+        highs = self.get_rolling_data(self.close, [2 * sp], func=np.max, func_name='highs')
+        lows = self.get_rolling_data(self.close, [2 * sp], func=np.min, func_name='lows')
+        res['Senkou_Span_B'] = ((highs['highs_' + str(2 * sp)] + lows['lows_' + str(2 * sp)]) / 2).shift(sp)
 
         # TODO: Add position data
         return res, ['b-', 'r--', 'b--', 'g--', 'r-', 'g-']
@@ -185,17 +188,17 @@ class Stock:
 
         plt.show()
 
-    def get_rsi_indicator(self):
+    def get_rsi_indicator(self, win=14):
         res = pd.DataFrame(self.hist_data[self.close])
         p = res[self.close].pct_change()
         gains = p.mask(p < 0, 0)
         gains.fillna(0, inplace=True)
-        avg_gains = gains.rolling(14).mean()
+        avg_gains = gains.rolling(win).mean()
 
         losses = p.mask(p > 0, 0)
         losses.fillna(0, inplace=True)
         losses = losses * -1
-        avg_losses = losses.rolling(14).mean()
+        avg_losses = losses.rolling(win).mean()
         rs = avg_gains / avg_losses
         res['RSI'] = 100 - 100 / (1 + rs)
 
@@ -225,13 +228,13 @@ class Stock:
 
         plt.show()
 
-    def get_macd_indicator(self):
+    def get_macd_indicator(self, wins=12, winb=26, p=9):
         res = pd.DataFrame(self.hist_data[self.close])
-        ema_12 = res[self.close].ewm(com=12 - 1).mean()
-        ema_26 = res[self.close].ewm(com=26 - 1).mean()
+        ema_12 = res[self.close].ewm(com=wins - 1).mean()
+        ema_26 = res[self.close].ewm(com=winb - 1).mean()
 
         res['macd'] = ema_12 - ema_26
-        res['signal_line'] = res['macd'].ewm(span=9).mean()
+        res['signal_line'] = res['macd'].ewm(span=p).mean()
         res['histogram'] = res['macd'] - res['signal_line']
 
         return res, ['-', 'b--', 'r--', 'g--']
@@ -256,10 +259,7 @@ class Stock:
 
         plt.show()
 
-    def get_parabolic_sar_indicator(self):
-        af_const = 0.04
-        af_max_const = 0.2
-
+    def get_parabolic_sar_indicator(self, af_const=0.02, af_max_const=0.2):
         af = af_const
         res = pd.DataFrame(self.hist_data[self.close])
         sar = np.zeros(res.size)
@@ -309,24 +309,23 @@ class Stock:
     @staticmethod
     def plot_sar(p_data, style):
         fig, ax = plt.subplots(1, 1)
-        ax = p_data.plot(style=style)
+        p_data.plot(style=style, ax=ax)
         ax.yaxis.tick_right()
         ax.grid()
-        fig.title('SAR plot')
 
         ax.legend()
 
         plt.show()
 
-    def get_stochastic_indicator(self):
+    def get_stochastic_indicator(self, kp=14, dp=3):
 
         res = pd.DataFrame(self.hist_data[self.close])
-        l14 = self.get_rolling_data(self.close, [14], func=np.min, func_name='low')
-        h14 = self.get_rolling_data(self.close, [14], func=np.max, func_name='high')
+        l14 = self.get_rolling_data(self.close, [kp], func=np.min, func_name='low')
+        h14 = self.get_rolling_data(self.close, [kp], func=np.max, func_name='high')
 
-        res['K'] = (res[self.close] - l14['low_14']) / (h14['high_14'] - l14['low_14']) * 100
-        res['D_fast'] = res['K'].rolling(3).mean()
-        res['D_slow'] = res['D_fast'].rolling(3).mean()
+        res['K'] = (res[self.close] - l14['low_' + str(kp)]) / (h14['high_' + str(kp)] - l14['low_' + str(kp)]) * 100
+        res['D_fast'] = res['K'].rolling(dp).mean()
+        res['D_slow'] = res['D_fast'].rolling(dp).mean()
 
         # TODO: add positions data
         return res, ['-', 'b--', 'r--', 'g--']
@@ -357,7 +356,7 @@ class Stock:
 
         plt.show()
 
-    def get_adx_indicator(self):
+    def get_adx_indicator(self, win=14):
         high = self.hist_data[self.high]
         low = self.hist_data[self.low]
         res = pd.DataFrame(self.hist_data[self.close])
@@ -378,10 +377,10 @@ class Stock:
         tmp['l_s'] = low.shift(1)
 
         res['tr'] = tmp[['h', 'l_s']].max(axis=1) - tmp[['low', self.close]].min(axis=1)
-        res['atr'] = res['tr'].ewm(com=14 - 1).mean()
-        res['+di'] = 100 * ((res['+dm'].ewm(com=14 - 1).mean()) / res['atr'])
-        res['-di'] = 100 * ((res['-dm'].ewm(com=14 - 1).mean()) / res['atr'])
-        res['adx'] = 100 * ((res['+di'] - res['-di']).apply(abs) / (res['+di'] + res['-di'])).ewm(com=14 - 1).mean()
+        res['atr'] = res['tr'].ewm(com=win - 1).mean()
+        res['+di'] = 100 * ((res['+dm'].ewm(com=win - 1).mean()) / res['atr'])
+        res['-di'] = 100 * ((res['-dm'].ewm(com=win - 1).mean()) / res['atr'])
+        res['adx'] = 100 * ((res['+di'] - res['-di']).apply(abs) / (res['+di'] + res['-di'])).ewm(com=win - 1).mean()
 
         res.drop(['tr', 'atr', '+dm', '-dm', 'upmoves', 'lowmoves'], axis=1, inplace=True)
         return res, ['b-', 'g--', 'r--', 'r']
@@ -532,29 +531,32 @@ class StockAnalyzer:
                                                                          ', in csv format, to the file '
                                                                          'whose path is provided')
         self.parser.add_command('ichimoku', "Performs the Ichimoku kinko hyo analysis", function=self.cmd_ichimoku)
+        self.parser.get_command('ichimoku').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                      'while adding the stock')
         self.parser.get_command('ichimoku').add_optional_arguments('-p', '--plot',
-                                                                         'Show the plot of the analysis',
-                                                                         param_type=None)
-        self.parser.get_command('ichimoku').add_optional_arguments('-kp',   '--kijun_sen_period',
-                                                                            'The window size for the Kijun Sen line '
-                                                                            '(default 26)',
-                                                                            param_type=int)
+                                                                   'Show the plot of the analysis',
+                                                                   param_type=None)
+        self.parser.get_command('ichimoku').add_optional_arguments('-kp', '--kijun_sen_period',
+                                                                   'The window size for the Kijun Sen line '
+                                                                   '(default 26)',
+                                                                   param_type=int)
         self.parser.get_command('ichimoku').add_optional_arguments('-tp', '--tenkan_sen_period',
                                                                    'The window size for the Tenkan Sen line '
                                                                    '(default 9)',
                                                                    param_type=int)
         self.parser.get_command('ichimoku').add_optional_arguments('-cp', '--chikou_sen_period',
                                                                    'The window size for the Chikou Sen line '
-                                                                   '(default 26)',
+                                                                   '(default -26). Enter positive number, it will be '
+                                                                   'made negative',
                                                                    param_type=int)
         self.parser.get_command('ichimoku').add_optional_arguments('-sp', '--senkou_sen_period',
                                                                    'The window size for the Senkou Sen line '
                                                                    '(default 26)',
                                                                    param_type=int)
         self.parser.get_command('ichimoku').add_optional_arguments('-e', '--export',
-                                                                         'Export the analysis data '
-                                                                         ', in csv format, to the file '
-                                                                         'whose path is provided')
+                                                                   'Export the analysis data '
+                                                                   ', in csv format, to the file '
+                                                                   'whose path is provided')
 
         self.parser.add_command('start_script', "Runs the script.", function=self.cmd_start_script)
         self.parser.get_command('start_script').add_compulsory_arguments('-fn', '--file_name',
@@ -563,6 +565,85 @@ class StockAnalyzer:
                                                                        'Prints out the commands being executed from '
                                                                        'the script', param_type=None)
 
+        self.parser.add_command('rsi', "Performs the Relative Strength Indicator analysis of the provided stock. "
+                                       "Stock must be added to the session before the analysis",
+                                function=self.cmd_rsi)
+        self.parser.get_command('rsi').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                 'while adding the stock')
+        self.parser.get_command('rsi').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                              param_type=None)
+        self.parser.get_command('rsi').add_optional_arguments('-w', '--window_size', 'The window size of RSI '
+                                                                                     'analysis',
+                                                              param_type=int)
+        self.parser.get_command('rsi').add_optional_arguments('-e', '--export', 'Export the analysis data '
+                                                                                ', in csv format, to the file '
+                                                                                'whose path is provided')
+
+        self.parser.add_command('macd', "Performs the moving average convergence/divergence analysis of the "
+                                        "provided stock. Stock must be added to the session before the analysis",
+                                function=self.cmd_macd)
+        self.parser.get_command('macd').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                  'while adding the stock')
+        self.parser.get_command('macd').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                               param_type=None)
+        self.parser.get_command('macd').add_optional_arguments('-ws', '--small_window_size', 'The small window size of '
+                                                                                             'MACD analysis',
+                                                               param_type=int)
+        self.parser.get_command('macd').add_optional_arguments('-wb', '--big_window_size', 'The big window size of '
+                                                                                           'MACD analysis',
+                                                               param_type=int)
+        self.parser.get_command('macd').add_optional_arguments('-ap', '--average_period', 'The averaging period of '
+                                                                                          'MACD analysis',
+                                                               param_type=int)
+        self.parser.get_command('macd').add_optional_arguments('-e', '--export', 'Export the analysis data '
+                                                                                 ', in csv format, to the file '
+                                                                                 'whose path is provided')
+
+        self.parser.add_command('sar', "Performs Stop and Reverse Indicator analysis of the provided stock. "
+                                       "Stock must be added to the session before the analysis", function=self.cmd_sar)
+        self.parser.get_command('sar').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                 'while adding the stock')
+        self.parser.get_command('sar').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                              param_type=None)
+        self.parser.get_command('sar').add_optional_arguments('-afi', '--af_init', 'The initial value of acceleration '
+                                                                                   'factor ', param_type=float)
+        self.parser.get_command('sar').add_optional_arguments('-afl', '--af_limit', 'The maximum value which '
+                                                                                    'acceleration factor can take',
+                                                              param_type=float)
+        self.parser.get_command('sar').add_optional_arguments('-e', '--export', 'Export the analysis data '
+                                                                                ', in csv format, to the file '
+                                                                                'whose path is provided')
+
+        self.parser.add_command('stochastic', "Performs the Stochastic indicator analysis of the provided stock."
+                                              "Stock must be added to the session before the analysis",
+                                function=self.cmd_stochastic)
+        self.parser.get_command('stochastic').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                        'while adding the stock')
+        self.parser.get_command('stochastic').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                                     param_type=None)
+        self.parser.get_command('stochastic').add_optional_arguments('-kp', "--K_period",
+                                                                     "The period for the %K line of the stochastic "
+                                                                     "indicator", param_type=int)
+
+        self.parser.get_command('stochastic').add_optional_arguments('-dp', "--D_period",
+                                                                     "The period for the %D line of the stochastic "
+                                                                     "indicator", param_type=int)
+        self.parser.get_command('stochastic').add_optional_arguments('-e', '--export', 'Export the analysis data '
+                                                                                       ', in csv format, to the file '
+                                                                                       'whose path is provided')
+
+        self.parser.add_command('adx', "Performs the ADX analysis of the provided stock. Stock must be "
+                                       "added to the session before the analysis", function=self.cmd_adx)
+        self.parser.get_command('adx').add_positional_arguments(0, 's', 'stock', 'Stock name which was given '
+                                                                                 'while adding the stock')
+        self.parser.get_command('adx').add_optional_arguments('-p', '--plot', 'Show the plot of the analysis',
+                                                              param_type=None)
+        self.parser.get_command('adx').add_optional_arguments('-w', '--window_size', 'The window size for the adx '
+                                                                                     'analysis',
+                                                              param_type=int)
+        self.parser.get_command('adx').add_optional_arguments('-e', '--export', 'Export the analysis data '
+                                                                                ', in csv format, to the file '
+                                                                                'whose path is provided')
         self.parser.add_command('exit', 'Exits the session', function=self.cmd_exit)
 
     def cmd_add_stock(self, res, out_func=print):
@@ -750,8 +831,8 @@ class StockAnalyzer:
 
     def cmd_bollinger(self, res):
         s = self.stocks[res['s']]
-
         k_list = list(res.keys())
+
         w = 20
         x = 2
         if '-w' in k_list:
@@ -770,9 +851,9 @@ class StockAnalyzer:
 
     def cmd_moving_average(self, res):
         s = self.stocks[res['s']]
+        k_list = list(res.keys())
         win1 = 20
         win2 = 100
-        k_list = list(res.keys())
         if '-w1' in k_list:
             win1 = res['-w1']
         if '-w2' in k_list:
@@ -790,29 +871,135 @@ class StockAnalyzer:
 
     def cmd_ichimoku(self, res):
         s = self.stocks[res['s']]
+        k_list = list(res.keys())
         kp = 26
         tp = 9
         cp = -26
         sp = 26
-        k_list = list(res.keys())
         if '-kp' in k_list:
             kp = res['-kp']
         if '-tp' in k_list:
             tp = res['-tp']
         if '-cp' in k_list:
-            cp = res['-cp']
+            cp = -1 * cp
         if '-sp' in k_list:
             sp = res['-sp']
 
+        k, style = s.get_ichimoku_kinko_hyo_indicator(kp=kp, tp=tp, cp=cp, sp=sp)
 
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_ichimoku_kinko_hyo, args=(k, style))
+            p.start()
 
-    #     get_ichimoku_kinko_hyo_indicator
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
 
-    # TODO: Add ichimoku_kinko_hyo
-    # TODO: Add rsi
-    # TODO: Add macd
-    # TODO: Add parabolic_sar
-    # TODO: Add stochastic
+    def cmd_rsi(self, res):
+        s = self.stocks[res['s']]
+        k_list = list(res.keys())
+        win = 13
+        if '-w' in k_list:
+            win = res['-w']
+
+        k, style = s.get_rsi_indicator(win=win)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_rsi, args=(k,))
+            p.start()
+
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_macd(self, res, out_func=print):
+        s = self.stocks[res['s']]
+        k_list = list(res.keys())
+        ws = 12
+        wB = 26
+        p = 9
+        if '-ws' in k_list:
+            ws = res['-ws']
+        if '-wb' in k_list:
+            wB = res['-wb']
+        if '-ap' in k_list:
+            p = res['-ap']
+        if ws > wB:
+            out_func("Illegal value of ws and wb")
+            return
+
+        k, style = s.get_macd_indicator(wins=ws, winb=wB, p=p)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_macd, args=(k,))
+            p.start()
+
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_sar(self, res, out_func=print):
+        s = self.stocks[res['s']]
+        k_list = list(res.keys())
+        afi = 0.02
+        afl = 0.2
+        if '-afi' in k_list:
+            afi = res['-afi']
+        if '-afl' in k_list:
+            afl = res['-afl']
+
+        if afi > afl:
+            out_func("Illegal value of afi and afl")
+            return
+
+        k, style = s.get_parabolic_sar_indicator(af_const=afi, af_max_const=afl)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_sar, args=(k, style))
+            p.start()
+
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_stochastic(self, res):
+        s = self.stocks[res['s']]
+        k_list = list(res.keys())
+        kp = 14
+        dp = 3
+        if '-kp' in k_list:
+            kp = res['-kp']
+        if '-dp' in k_list:
+            dp = res['-dp']
+
+        k, style = s.get_stochastic_indicator(kp=kp, dp=dp)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_stochastic, args=(k,))
+            p.start()
+
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
+    def cmd_adx(self, res):
+        s = self.stocks[res['s']]
+        k_list = list(res.keys())
+
+        w = 14
+        if '-w' in k_list:
+            w = res['-w']
+
+        k, style = s.get_adx_indicator(win=w)
+
+        if '-p' in k_list:
+            p = mp.Process(target=Stock.plot_adx, args=(k,))
+            p.start()
+
+        if '-e' in k_list:
+            with open(res['-e'], 'w') as f:
+                f.write(k.to_csv(line_terminator='\n'))
+
     # TODO: Add adx
 
     def start_command_line(self):
