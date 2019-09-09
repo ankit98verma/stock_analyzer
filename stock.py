@@ -10,7 +10,6 @@ import inspect
 from socket import gaierror
 from requests.exceptions import ConnectionError
 from urllib3.exceptions import MaxRetryError, NewConnectionError
-
 import multiprocessing as mp
 
 _alpha = 0.2
@@ -406,7 +405,7 @@ class Stock:
 
 
 class StockAnalyzer:
-    __version__ = 0.1
+    __version__ = "1.O"
 
     def __init__(self, session_name, start_date=''):
         self.session_name = session_name
@@ -736,14 +735,14 @@ class StockAnalyzer:
                 try:
                     if type(param_dict[param]) is datetime:
                         val_error_string = ". Value should be in format YYYY-MM-DD"
-                        val = datetime.strptime(val, '%Y-%m-%d')
+                        val = datetime.strptime(v, '%Y-%m-%d')
                     elif type(param_dict[param]) is timedelta:
                         val_error_string = ". Value should be an integer"
-                        val = timedelta(int(val))
+                        val = timedelta(int(v))
                     elif type(param_dict[param]) is bool:
-                        if val == 'true':
+                        if v == 'true':
                             val = True
-                        elif val == 'false':
+                        elif v == 'false':
                             val = False
                         else:
                             val_error_string = ". Value should be either 'true' or 'false'"
@@ -751,7 +750,7 @@ class StockAnalyzer:
                     else:
                         val_error_string = ". Value should be {0}".format(
                             str(type(param_dict[param])).replace('<class ', "").replace(">", ""))
-                        val = type(param_dict[param])(val)
+                        val = type(param_dict[param])(v)
                 except ValueError:
                     out_func("Value for the parameter '" + param + "' is wrong" + val_error_string)
                     continue
@@ -916,19 +915,19 @@ class StockAnalyzer:
         s = self.stocks[res['s']]
         k_list = list(res.keys())
         ws = 12
-        wB = 26
+        wb = 26
         p = 9
         if '-ws' in k_list:
             ws = res['-ws']
         if '-wb' in k_list:
-            wB = res['-wb']
+            wb = res['-wb']
         if '-ap' in k_list:
             p = res['-ap']
-        if ws > wB:
+        if ws > wb:
             out_func("Illegal value of ws and wb")
             return
 
-        k, style = s.get_macd_indicator(wins=ws, winb=wB, p=p)
+        k, style = s.get_macd_indicator(wins=ws, winb=wb, p=p)
 
         if '-p' in k_list:
             p = mp.Process(target=Stock.plot_macd, args=(k,))
@@ -999,8 +998,6 @@ class StockAnalyzer:
         if '-e' in k_list:
             with open(res['-e'], 'w') as f:
                 f.write(k.to_csv(line_terminator='\n'))
-
-    # TODO: Add adx
 
     def start_command_line(self):
         while self.cmd_line_cont:

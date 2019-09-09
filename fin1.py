@@ -69,7 +69,7 @@ def handle_init():
         if res is None:
             continue
         elif cmd == 'exit':
-            print('Exiting')
+            print('Exiting. Please close any other opened window')
             exit(0)
         elif cmd == 'start_session':
             if '-sd' in list(res.keys()):
