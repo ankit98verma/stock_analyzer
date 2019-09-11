@@ -24,12 +24,16 @@ class Stock:
         self.current_price = -1
         self.hist_data = None
         self.sector = sector
-        self.get_current_price()
+        try:
+            self.get_current_price()
+        except (ConnectionError, MaxRetryError, gaierror, NewConnectionError):
+            self.current_price = -1
 
         self.close = self.tracker + '_Close'
         self.low = self.tracker + '_Low'
         self.high = self.tracker + '_High'
         self.open = self.tracker + '_Open'
+        self.volume = self.tracker + '_Volume'
 
     def get_hist_data(self, start_time, end_time):
         if type(start_time) is str:
@@ -49,11 +53,8 @@ class Stock:
         return tmp
 
     def get_current_price(self):
-        # try:
         current_quote = nse.get_quote(self.tracker)
         self.current_price = current_quote['lastPrice']
-        # except (ConnectionError, MaxRetryError, NewConnectionError, gaierror):
-        #     self.current_price = -1
         return self.current_price
 
     def get_tracker(self):
@@ -119,11 +120,13 @@ class Stock:
         columns = bolli_data.columns
         columns = columns[:-1]
         bolli_data[columns].plot(ax=ax2)
+        # bolli_data['positions'].plot(style='r', ax=ax)
 
         ax2.fill_between(bolli_data.index, bolli_data['up_' + str(n)], bolli_data['down_' + str(n)], alpha=_alpha)
-        bolli_data['positions'].plot(style='r', ax=ax)
-
-        ax.grid()
+        ax.set_xlabel('Date')
+        ax2.set_ylabel('Close Price')
+        ax2.grid()
+        fig.suptitle('Bollinger plot')
         plt.show()
 
     def get_moving_average_indicator(self, win1=20, win2=100):
@@ -147,7 +150,10 @@ class Stock:
         ax2.fill_between(mov_data.index, mov_data['mean_' + str(win1)], mov_data['mean_' + str(win2)],
                          where=mov_data['positions'] < 1, facecolor='red', alpha=_alpha)
         mov_data['positions'].plot(ax=ax)
-        ax.grid()
+        ax.set_xlabel('Date')
+        ax2.set_ylabel('Close Price')
+        ax2.grid()
+        fig.suptitle('Moving average plot')
 
         plt.show()
 
@@ -183,7 +189,10 @@ class Stock:
                         where=p_data['Senkou_Span_A'] < p_data['Senkou_Span_B'],
                         facecolor='green', alpha=_alpha)
         ax.yaxis.tick_right()
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Close Price')
         ax.grid()
+        fig.suptitle('Ichimoku plot')
 
         plt.show()
 
@@ -225,6 +234,12 @@ class Stock:
         ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('RSI')
 
+        ax[1].set_xlabel('Date')
+        ax[1].set_ylabel('RSI')
+        ax[0].set_ylabel('Close price')
+        ax[0].grid()
+        fig.suptitle('RSI plot')
+
         plt.show()
 
     def get_macd_indicator(self, wins=12, winb=26, p=9):
@@ -255,6 +270,11 @@ class Stock:
         ax[0].bar(p_data.index, p_data['histogram'], label='MACD histogram', color='red', alpha=_alpha)
         ax[0].legend()
         ax[1].legend()
+
+        ax[1].set_xlabel('Date')
+        ax[0].set_ylabel('Close Price')
+        ax[0].grid()
+        fig.suptitle('MACD plot')
 
         plt.show()
 
@@ -310,9 +330,12 @@ class Stock:
         fig, ax = plt.subplots(1, 1)
         p_data.plot(style=style, ax=ax)
         ax.yaxis.tick_right()
-        ax.grid()
-
         ax.legend()
+
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Close Price')
+        ax.grid()
+        fig.suptitle('Parabolic SAR plot')
 
         plt.show()
 
@@ -352,6 +375,9 @@ class Stock:
         ax[1].fill_between(p_data.index, mid_mark, low_mark, alpha=_alpha, facecolor='red')
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
+
+        ax[0].grid()
+        fig.suptitle('Stochastic plot')
 
         plt.show()
 
@@ -401,6 +427,8 @@ class Stock:
         ax[1].set_ylabel('Stochastic indicator')
         ax[1].legend()
 
+        ax[0].grid()
+        fig.suptitle('ADX plot')
         plt.show()
 
 
@@ -766,13 +794,16 @@ class StockAnalyzer:
         self.load_dependent_values()
 
     def cmd_update_stocks(self, res, out_func=print):
-        if len(res) == 0:
-            self.update_stock_details(force=True, out_func=out_func)
-        else:
-            for v in res.values():
-                out_func("Updating: " + self.stocks[v].get_name())
-                # TODO: Handle the possible connection etc. error here
-                self.stocks[v].fill_hist_data(self.start, self.end)
+        try:
+            if len(res) == 0:
+                self.update_stock_details(force=True, out_func=out_func)
+            else:
+                for v in res.values():
+                    out_func("Updating: " + self.stocks[v].get_name())
+                    self.stocks[v].fill_hist_data(self.start, self.end)
+        except (NewConnectionError, gaierror, MaxRetryError, ConnectionError, AttributeError):
+            print('Connection cannot be established')
+            raise CommandNotExecuted('update_stocks')
 
     def cmd_version(self, out_func=print):
         out_func("Session: " + self.session_name + " Version: " + str(StockAnalyzer.__version__))
@@ -842,7 +873,11 @@ class StockAnalyzer:
             raise CommandNotExecuted('start_script')
 
     def cmd_bollinger(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
 
         w = 20
@@ -862,7 +897,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_moving_average(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         win1 = 20
         win2 = 100
@@ -882,7 +921,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_ichimoku(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         kp = 26
         tp = 9
@@ -908,7 +951,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_rsi(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         win = 13
         if '-w' in k_list:
@@ -925,7 +972,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_macd(self, res, out_func=print):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         ws = 12
         wb = 26
@@ -951,7 +1002,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_sar(self, res, out_func=print):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         afi = 0.02
         afl = 0.2
@@ -975,7 +1030,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_stochastic(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
         kp = 14
         dp = 3
@@ -995,7 +1054,11 @@ class StockAnalyzer:
                 f.write(k.to_csv(line_terminator='\n'))
 
     def cmd_adx(self, res):
-        s = self.stocks[res['s']]
+        try:
+            s = self.stocks[res['s']]
+        except KeyError:
+            print('Wrong stock name or the stock has not been added')
+            raise CommandNotExecuted('')
         k_list = list(res.keys())
 
         w = 14
